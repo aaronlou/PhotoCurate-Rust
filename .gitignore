@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+
+# Tauri
+src-tauri/target/
+src-tauri/WixTools/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Large model files (downloaded/converted, not source)
+models/
+src-tauri/src/ai/models/*.onnx
+src-tauri/src/ai/models/*.onnx.data
+
+# App data & cache
+*.db
+*.db-shm
+*.db-wal
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Environment
+.env
+.env.local
+.env.*.local
