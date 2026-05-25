@@ -115,6 +115,41 @@ src-tauri/src/
 | 语义搜索 | Chinese-CLIP (ONNX + CoreML) 或 Gemini Embedding |
 | 向量检索 | 内存 BruteForce + 余弦相似度 |
 
+## 本地模型安装（可选）
+
+如果你希望搜索功能完全离线运行，可以安装本地 Chinese-CLIP 模型。**如果不安装，搜索会自动使用 Gemini API。**
+
+### 方式一：一键脚本（推荐）
+
+```bash
+bash scripts/setup_local_model.sh
+```
+
+脚本会自动完成：创建 Python 虚拟环境 → 安装依赖 → 下载模型 → 转换 ONNX → 复制到运行时目录。
+
+> 需要 Python 3，整个过程约需 5-10 分钟（取决于网络速度），磁盘占用约 1.5 GB。
+
+### 方式二：下载预转换模型
+
+如果不想安装 Python，可以直接下载已转换好的 ONNX 文件：
+
+1. 下载 [chinese_clip_onnx_models.zip](https://github.com/aaronlou/PhotoCurate-Rust/releases/latest/download/chinese_clip_onnx_models.zip)（约 660 MB）
+2. 解压后将 4 个文件复制到运行时目录
+
+**运行时目录位置：**
+
+| 系统 | 路径 |
+|---|---|
+| macOS | `~/Library/Application Support/com.photocurate/models/` |
+| Windows | `C:\Users\你的用户名\AppData\Roaming\com.photocurate\models\` |
+| Linux | `~/.local/share/com.photocurate/models/` |
+
+复制的 4 个文件：
+- `chinese_clip_image.onnx`
+- `chinese_clip_text.onnx`
+- `chinese_clip_config.json`
+- `vocab.txt`
+
 ## 许可证
 
-MIT
+GNU General Public License v3.0 — 详见 [LICENSE](LICENSE)
