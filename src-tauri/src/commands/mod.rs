@@ -1,5 +1,6 @@
-use crate::models::{AiSettings, Directory, Photo, SearchResult};
+use crate::models::{AiSettings, Directory, ExportFailure, ExportResult, Photo, SearchResult};
 use crate::{AppState, Result};
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use tauri::State;
 
@@ -307,21 +308,180 @@ pub async fn natural_language_search(
 
 // ==================== Export ====================
 
-#[tauri::command]
-pub async fn export_photos(
-    _state: State<'_, AppState>,
+pub async fn export_photos_internal(
+    state: &AppState,
     photo_ids: Vec<String>,
     destination: String,
-) -> Result<()> {
+    preserve_structure: Option<bool>,
+) -> Result<ExportResult> {
     let dest = PathBuf::from(&destination);
     std::fs::create_dir_all(&dest).map_err(|e| e.to_string())?;
+    let preserve = preserve_structure.unwrap_or(false);
 
-    for id in photo_ids {
-        // In a real implementation, we'd copy the files here
-        tracing::info!("Export photo {} to {:?}", id, dest);
+    // Deduplicate photo ids
+    let unique_ids: Vec<String> = photo_ids.into_iter().collect::<HashSet<_>>().into_iter().collect();
+
+    if unique_ids.is_empty() {
+        return Ok(ExportResult {
+            exported_count: 0,
+            failed_count: 0,
+            failed_photos: vec![],
+        });
     }
 
-    Ok(())
+    // Build IN clause for batch query
+    let placeholders: Vec<String> = (1..=unique_ids.len()).map(|i| format!("?{}", i)).collect();
+    let query = format!("SELECT * FROM photos WHERE id IN ({})", placeholders.join(", "));
+
+    let mut q = sqlx::query_as::<_, Photo>(&query);
+    for id in &unique_ids {
+        q = q.bind(id);
+    }
+    let photos_to_export: Vec<Photo> = q.fetch_all(&state.db).await.map_err(|e| e.to_string())?;
+
+    // Pre-fetch directory paths to avoid N+1 queries
+    let mut dir_map: HashMap<String, PathBuf> = HashMap::new();
+    if preserve {
+        let dir_ids: Vec<String> = photos_to_export
+            .iter()
+            .filter_map(|p| p.directory_id.clone())
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+
+        if !dir_ids.is_empty() {
+            let placeholders: Vec<String> = (1..=dir_ids.len()).map(|i| format!("?{}", i)).collect();
+            let dir_query = format!("SELECT * FROM directories WHERE id IN ({})", placeholders.join(", "));
+            let mut dq = sqlx::query_as::<_, Directory>(&dir_query);
+            for id in &dir_ids {
+                dq = dq.bind(id);
+            }
+            let dirs: Vec<Directory> = dq.fetch_all(&state.db).await.map_err(|e| e.to_string())?;
+            for dir in dirs {
+                dir_map.insert(dir.id, PathBuf::from(dir.path));
+            }
+        }
+    }
+
+    let mut exported_count = 0usize;
+    let mut failed_photos = Vec::new();
+
+    for photo in photos_to_export {
+        let src = PathBuf::from(&photo.file_path);
+        if !src.exists() {
+            failed_photos.push(ExportFailure {
+                id: photo.id.clone(),
+                file_name: photo.file_name.clone(),
+                error: "源文件不存在".to_string(),
+            });
+            continue;
+        }
+
+        // Determine destination path
+        let dest_file = if preserve {
+            if let Some(dir_id) = &photo.directory_id {
+                if let Some(dir_path) = dir_map.get(dir_id) {
+                    if let Ok(relative) = src.strip_prefix(dir_path) {
+                        let target_dir = if let Some(parent) = relative.parent() {
+                            dest.join(parent)
+                        } else {
+                            dest.clone()
+                        };
+                        std::fs::create_dir_all(&target_dir).map_err(|e| e.to_string())?;
+                        target_dir.join(&photo.file_name)
+                    } else {
+                        dest.join(&photo.file_name)
+                    }
+                } else {
+                    dest.join(&photo.file_name)
+                }
+            } else {
+                dest.join(&photo.file_name)
+            }
+        } else {
+            dest.join(&photo.file_name)
+        };
+
+        // Handle filename conflicts by auto-renaming
+        let final_dest = resolve_conflict(&dest_file);
+
+        match std::fs::copy(&src, &final_dest) {
+            Ok(_bytes_copied) => {
+                let now = chrono::Utc::now();
+                if let Err(e) = sqlx::query(
+                    "UPDATE photos SET has_been_exported = 1, export_date = ?1 WHERE id = ?2"
+                )
+                .bind(now)
+                .bind(&photo.id)
+                .execute(&state.db)
+                .await
+                {
+                    tracing::warn!("Failed to update export status for {}: {}", photo.id, e);
+                }
+                exported_count += 1;
+                tracing::info!("Exported {} -> {:?}", photo.file_path, final_dest);
+            }
+            Err(e) => {
+                failed_photos.push(ExportFailure {
+                    id: photo.id.clone(),
+                    file_name: photo.file_name.clone(),
+                    error: e.to_string(),
+                });
+            }
+        }
+    }
+
+    Ok(ExportResult {
+        exported_count,
+        failed_count: failed_photos.len(),
+        failed_photos,
+    })
+}
+
+#[tauri::command]
+pub async fn export_photos(
+    state: State<'_, AppState>,
+    photo_ids: Vec<String>,
+    destination: String,
+    preserve_structure: Option<bool>,
+) -> Result<ExportResult> {
+    export_photos_internal(&state, photo_ids, destination, preserve_structure).await
+}
+
+/// If the destination file already exists, append " (1)", " (2)", etc.
+fn resolve_conflict(path: &PathBuf) -> PathBuf {
+    if !path.exists() {
+        return path.clone();
+    }
+
+    let fallback = PathBuf::from(".");
+    let parent = path.parent().unwrap_or(fallback.as_path());
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("file");
+    let ext = path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
+
+    let mut counter = 1;
+    loop {
+        let new_name = if ext.is_empty() {
+            format!("{} ({})", stem, counter)
+        } else {
+            format!("{} ({}).{}", stem, counter, ext)
+        };
+        let candidate = parent.join(&new_name);
+        if !candidate.exists() {
+            return candidate;
+        }
+        counter += 1;
+        if counter > 9999 {
+            // Safety break
+            return parent.join(format!("{}_{}", stem, uuid::Uuid::new_v4()));
+        }
+    }
 }
 
 // ==================== AI Settings ====================

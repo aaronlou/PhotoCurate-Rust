@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { Photo, Directory, AISettings, SearchResult } from "@/types";
+import { Photo, Directory, AISettings, SearchResult, ExportResult } from "@/types";
 
 // Directory commands
 export async function pickDirectory(): Promise<string | null> {
@@ -60,8 +60,12 @@ export async function naturalLanguageSearch(query: string): Promise<SearchResult
 }
 
 // Export
-export async function exportPhotos(photoIds: string[], destination: string): Promise<void> {
-  return invoke("export_photos", { photoIds, destination });
+export async function exportPhotos(
+  photoIds: string[],
+  destination: string,
+  preserveStructure?: boolean
+): Promise<ExportResult> {
+  return invoke("export_photos", { photoIds, destination, preserveStructure });
 }
 
 // AI Settings

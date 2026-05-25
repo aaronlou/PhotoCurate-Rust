@@ -52,5 +52,17 @@ export interface SearchResult {
   similarity: number;
 }
 
+export interface ExportFailure {
+  id: string;
+  file_name: string;
+  error: string;
+}
+
+export interface ExportResult {
+  exported_count: number;
+  failed_count: number;
+  failed_photos: ExportFailure[];
+}
+
 export type ViewMode = "browser" | "grid" | "list";
 export type NavItem = "library" | "scoring" | "search" | "export";
