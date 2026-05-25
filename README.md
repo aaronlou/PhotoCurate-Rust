@@ -2,6 +2,17 @@
 
 **AI 驱动的照片管理与精选工具。** 自动为你的照片打分，用自然语言搜索照片内容，一键导出高分作品。
 
+<p align="center">
+  <a href="https://github.com/aaronlou/PhotoCurate-Rust/releases/latest/download/PhotoCurate_0.1.0_aarch64.dmg">
+    <img src="https://img.shields.io/badge/下载-macOS_DMG-7c3aed?style=for-the-badge&logo=apple" alt="下载 macOS DMG">
+  </a>
+  <a href="https://github.com/aaronlou/PhotoCurate-Rust/releases">
+    <img src="https://img.shields.io/badge/查看-Release_Notes-6d28d9?style=for-the-badge&logo=github" alt="Release Notes">
+  </a>
+</p>
+
+> macOS 14.0+（Apple Silicon）| 首次运行如提示「无法验证开发者」，请到 **系统设置 → 隐私与安全性** 中点击「仍要打开」
+
 ---
 
 ## 这个工具能做什么？
