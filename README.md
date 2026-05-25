@@ -1,158 +1,115 @@
-# PhotoCurate (Tauri 重构版)
+# PhotoCurate
 
-基于 **Tauri (Rust + React/TypeScript)** 的 AI 照片管理与评分工具。
+**AI 驱动的照片管理与精选工具。** 自动为你的照片打分，用自然语言搜索照片内容，一键导出高分作品。
 
-## 项目架构
+---
 
-```
-PhotoCurate_Rust/
-├── src/                          # 前端 (React + TypeScript)
-│   ├── components/               # 共享 UI 组件
-│   ├── views/                    # 页面视图 (Library, Scoring, Search, Export)
-│   ├── hooks/                    # IPC 调用封装
-│   ├── stores/                   # Zustand 状态管理
-│   └── types/                    # TypeScript 类型定义
-├── src-tauri/                    # 后端 (Rust)
-│   ├── src/
-│   │   ├── commands/             # Tauri IPC 命令
-│   │   ├── db/                   # SQLite 数据库与迁移
-│   │   ├── fs/                   # 文件扫描、EXIF、缩略图
-│   │   ├── ai/                   # Gemini API 服务
-│   │   ├── vector/               # 内存向量检索 (BruteForce)
-│   │   └── models/               # 数据模型
-│   ├── icons/                    # 应用图标
-│   ├── tauri.conf.json           # Tauri 配置
-│   └── Entitlements.plist        # macOS 沙盒权限
-├── package.json
-├── vite.config.ts
-└── tailwind.config.js
-```
+## 这个工具能做什么？
 
-## 技术栈
+如果你有成千上万张照片，你可能会遇到这些问题：
 
-| 层级 | 技术 |
-|------|------|
-| 前端框架 | React 19 + TypeScript |
-| UI 样式 | Tailwind CSS |
-| 状态管理 | Zustand |
-| 图标 | Lucide React |
-| 后端框架 | Tauri v2 (Rust) |
-| 数据库 | SQLite + sqlx |
-| 文件监控 | notify crate |
-| AI 服务 | Gemini API |
-| 向量检索 | 内存 BruteForce + 余弦相似度 |
+- **拍了太多，不知道哪些值得保留** → AI 自动美学评分（0-100 分），一眼看到最好的照片
+- **想找某张照片，但翻半天找不到** → 用中文描述画面内容直接搜索，比如「夕阳下的海滩」「穿红衣服的小孩」
+- **想导出最好的照片，但一张张挑选太累** → 设定评分阈值，一键导出所有高分照片
 
-## 快速开始
+PhotoCurate 就是帮你解决这些问题的桌面应用。
 
-### 开发环境要求
+---
 
-- **Node.js** >= 20
-- **Rust** >= 1.78
-- **Tauri CLI**: `npm install -g @tauri-apps/cli`
-- macOS 14.0+ (用于 App Store 上架)
+## 准备工作
 
-### 安装依赖
+### 系统要求
+
+| | 最低要求 |
+|---|---|
+| 操作系统 | macOS 14.0+ / Windows 10+ / Linux |
+| Node.js | >= 20 |
+| Rust | >= 1.78 |
+
+### 配置 AI 能力（二选一）
+
+PhotoCurate 的评分和语义搜索需要 AI 能力，你有两种选择：
+
+**方式 A：Gemini API（推荐，零配置）**
+
+1. 打开 [Google AI Studio](https://aistudio.google.com/apikey)
+2. 点击「Create API Key」获取免费 Key
+3. 打开 PhotoCurate 后，在「评分」页面填入 Key 即可
+
+> 优点：无需下载模型，开箱即用。免费额度足够个人日常使用。
+
+**方式 B：本地 Chinese-CLIP 模型（离线，无需网络）**
+
+如果你希望完全不依赖网络和 API Key，可以使用本地模型（仅支持语义搜索，评分仍需 Gemini API）：
 
 ```bash
+# 1. 安装 Python 依赖
+python3 -m venv .venv && source .venv/bin/activate
+pip install modelscope torch transformers onnx onnxscript
+
+# 2. 从 ModelScope 下载模型（约 720 MB）
+python3 -c "
+from modelscope import snapshot_download
+snapshot_download('damo/multi-modal_clip-vit-base-patch16_zh',
+                  local_dir='models/chinese-clip-vit-base-patch16')
+"
+
+# 3. 转换为 ONNX 格式（生成约 720 MB 的 ONNX 文件）
+python3 scripts/convert_chinese_clip_modelscope.py
+
+# 4. 复制模型文件到运行时目录
+mkdir -p ~/Library/Application\ Support/com.photocurate/models/
+cp src-tauri/src/ai/models/chinese_clip_*.onnx \
+   src-tauri/src/ai/models/chinese_clip_config.json \
+   src-tauri/src/ai/models/vocab.txt \
+   ~/Library/Application\ Support/com.photocurate/models/
+```
+
+> macOS 上的模型文件路径为 `~/Library/Application Support/com.photocurate/models/`。如果文件不存在，应用启动时不会报错，只是无法使用本地模型，仍可通过 Gemini API 使用语义搜索。
+
+---
+
+## 启动应用
+
+```bash
+# 安装前端依赖
 npm install
-```
 
-### 开发模式
-
-```bash
+# 启动开发模式（同时启动前端和后端）
 npm run tauri-dev
 ```
 
-这会同时启动 Vite 前端 dev server 和 Rust 后端。
+应用窗口会自动打开，首次运行会提示授予文件夹访问权限。
 
-### 构建生产包
+---
 
-```bash
-npm run tauri-build
+## 使用流程
+
+1. **导入照片** — 点击左侧「图库」，添加你的照片文件夹
+2. **AI 评分** — 切换到「评分」页，配置 Gemini API Key 后开始评分
+3. **智能检索** — 在「搜索」页输入中文描述，找到你想要的画面
+4. **精选导出** — 在「导出」页设置评分门槛，一键导出
+
+---
+
+## 技术架构
+
+```
+src-tauri/src/
+├── domain/          # 领域模型（Photo、Directory 等核心类型）
+├── application/     # 应用层（评分、搜索、导出等用例编排）
+├── infrastructure/  # 基础设施（数据库、文件系统、AI 服务、向量索引）
+└── interface/       # 接口层（Tauri IPC 命令）
 ```
 
-构建产物位于 `src-tauri/target/release/bundle/`:
-- **DMG**: `PhotoCurate_0.1.0_aarch64.dmg`
-- **APP**: `PhotoCurate.app`
-
-## 核心功能
-
-### 1. 图库管理
-- 添加本地文件夹（支持 Security-Scoped Bookmark）
-- 自动递归扫描图片（JPG/PNG/HEIC/TIFF/RAW）
-- FSEvents 实时文件监控
-- 三种浏览模式：浏览器 / 网格 / 列表
-
-### 2. AI 评分
-- 基于 Gemini API 的照片美学评分 (0-100)
-- 自动生成图像描述向量
-- 批量评分，支持进度显示
-
-### 3. 智能检索
-- 自然语言搜索照片内容
-- 基于向量相似度的语义匹配
-
-### 4. 精选导出
-- 按评分阈值筛选照片
-- 一键导出到指定文件夹
-
-## 与原 Swift 项目的对比
-
-| 特性 | Swift 版 | Tauri 版 |
-|------|---------|---------|
-| 本地 AI (Core ML) | MobileCLIP + Neural Engine | **Gemini API** (V1) |
-| 数据持久化 | SwiftData | SQLite + sqlx |
-| 文件监控 | FSEvents (C API) | notify crate (跨平台) |
-| UI | SwiftUI | React + Tailwind |
-| 跨平台 | 仅 macOS | **macOS/Windows/Linux** |
-| AI 辅助开发 | 较弱 | **极强** |
-
-## App Store 上架配置
-
-### 1. 代码签名
-
-在 `src-tauri/tauri.conf.json` 中配置：
-
-```json
-{
-  "bundle": {
-    "macOS": {
-      "signingIdentity": "Developer ID Application: Your Name (TEAM_ID)",
-      "providerShortName": "TEAM_ID"
-    }
-  }
-}
-```
-
-### 2. 沙盒权限
-
-`src-tauri/Entitlements.plist` 已配置：
-- `com.apple.security.app-sandbox`
-- `com.apple.security.files.user-selected.read-write`
-- `com.apple.security.network.client`
-
-### 3. 上架步骤
-
-```bash
-# 1. 构建并签名
-tauri build --target aarch64-apple-darwin
-
-# 2. 公证 (dmg 版本)
-xcrun notarytool submit src-tauri/target/release/bundle/dmg/*.dmg \
-  --apple-id your@email.com \
-  --team-id TEAM_ID \
-  --wait
-
-# 3. App Store 版本需要额外配置 (使用 app 目标而非 dmg)
-```
-
-## 已知限制与 TODO
-
-- [ ] **本地 AI 模型**: V1 使用 Gemini API，后续可集成 ONNX Runtime + MobileCLIP 实现离线推理
-- [ ] **Security-Scoped Bookmark**: 当前为占位实现，需补充 macOS 原生 bookmark 创建/解析
-- [ ] **RAW 格式缩略图**: 依赖 macOS `sips` 命令，Windows 需额外配置
-- [ ] **增量文件监控**: 当前 FSEvents 仅记录日志，未实现增量更新
-- [ ] **进度流式推送**: 评分进度目前为前端模拟，后续可用 Tauri Event 实现真实进度
+| 层级 | 技术 |
+|---|---|
+| 前端 | React 19 + TypeScript + Tailwind CSS + Zustand |
+| 后端 | Tauri v2 (Rust) |
+| 数据库 | SQLite + sqlx |
+| AI 评分 | Gemini API |
+| 语义搜索 | Chinese-CLIP (ONNX + CoreML) 或 Gemini Embedding |
+| 向量检索 | 内存 BruteForce + 余弦相似度 |
 
 ## 许可证
 

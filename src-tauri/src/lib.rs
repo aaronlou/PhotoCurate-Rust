@@ -1,26 +1,24 @@
-use sqlx::Pool;
-use sqlx::Sqlite;
-use tauri::Manager;
+use sqlx::{Pool, Sqlite};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tauri::Manager;
 use tokio::sync::Mutex;
 
-pub mod ai;
-pub mod commands;
-pub mod db;
-pub mod fs;
-pub mod models;
-pub mod vector;
+pub mod error;
+pub mod domain;
+pub mod application;
+pub mod infrastructure;
+pub mod interface;
 
-pub type Result<T> = std::result::Result<T, String>;
+pub type Result<T> = error::Result<T>;
 
 pub struct AppState {
     pub db: Pool<Sqlite>,
     pub thumbnail_dir: PathBuf,
-    pub vector_index: vector::SharedVectorIndex,
+    pub vector_index: infrastructure::vector::SharedVectorIndex,
     pub monitors: Arc<Mutex<HashMap<String, (String, notify::RecommendedWatcher)>>>,
-    pub chinese_clip: Option<Arc<ai::ChineseClipService>>,
+    pub chinese_clip: Option<Arc<infrastructure::ai::ChineseClipService>>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -39,22 +37,22 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::pick_directory,
-            commands::add_directory,
-            commands::get_directories,
-            commands::remove_directory,
-            commands::get_photos,
-            commands::get_photo_by_id,
-            commands::get_thumbnail_path,
-            commands::start_scanning,
-            commands::score_photos,
-            commands::build_search_index,
-            commands::natural_language_search,
-            commands::export_photos,
-            commands::get_ai_settings,
-            commands::update_ai_settings,
-            commands::check_local_model,
-            commands::validate_api_key,
+            interface::commands::pick_directory,
+            interface::commands::add_directory,
+            interface::commands::get_directories,
+            interface::commands::remove_directory,
+            interface::commands::get_photos,
+            interface::commands::get_photo_by_id,
+            interface::commands::get_thumbnail_path,
+            interface::commands::start_scanning,
+            interface::commands::score_photos,
+            interface::commands::build_search_index,
+            interface::commands::natural_language_search,
+            interface::commands::export_photos,
+            interface::commands::get_ai_settings,
+            interface::commands::update_ai_settings,
+            interface::commands::check_local_model,
+            interface::commands::validate_api_key,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -67,15 +65,13 @@ async fn setup_app(app: tauri::AppHandle) -> anyhow::Result<()> {
     let thumbnail_dir = app_data_dir.join("thumbnails");
     std::fs::create_dir_all(&thumbnail_dir)?;
 
-    let db = db::init_db(&app_data_dir).await?;
+    let db = infrastructure::db::init_db(&app_data_dir).await?;
 
-    let vector_index = vector::create_index();
+    let vector_index = infrastructure::vector::create_index();
 
-    // Load existing vectors into memory index
-    let vectors: Vec<(String, String)> =
-        sqlx::query_as("SELECT photo_id, vector FROM vector_entries")
-            .fetch_all(&db)
-            .await?;
+    let vectors = infrastructure::repositories::SqliteVectorRepository::new(db.clone())
+        .find_all()
+        .await?;
 
     {
         let mut index = vector_index.write().await;
@@ -86,10 +82,9 @@ async fn setup_app(app: tauri::AppHandle) -> anyhow::Result<()> {
         }
     }
 
-    // Try to load Chinese-CLIP local model
     let models_dir = app.path().app_data_dir()?.join("models");
     let chinese_clip = if models_dir.join("chinese_clip_image.onnx").exists() {
-        match ai::ChineseClipService::new(&models_dir) {
+        match infrastructure::ai::ChineseClipService::new(&models_dir) {
             Ok(service) => {
                 tracing::info!("Chinese-CLIP local model loaded successfully");
                 Some(Arc::new(service))

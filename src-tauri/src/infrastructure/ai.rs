@@ -1,7 +1,8 @@
 pub mod chinese_clip;
 
-use crate::models::ScoreResult;
-use anyhow::{Context, Result};
+use crate::domain::models::ScoreResult;
+use crate::error::{PhotoCurateError, Result};
+use anyhow::Context;
 use serde_json::json;
 use std::sync::Arc;
 
@@ -9,29 +10,43 @@ pub use chinese_clip::ChineseClipService;
 
 /// Embed an image using the best available method.
 /// If local Chinese-CLIP model is available, use it. Otherwise fall back to Gemini API.
-pub async fn embed_image(api_key: &str, image_path: &str, local: Option<Arc<ChineseClipService>>) -> Result<Vec<f64>> {
+pub async fn embed_image(
+    api_key: &str,
+    image_path: &str,
+    local: Option<Arc<ChineseClipService>>,
+) -> Result<Vec<f64>> {
     if let Some(service) = local {
         let image_path = image_path.to_string();
-        let embedding = tokio::task::spawn_blocking(move || {
-            service.embed_image(&image_path)
-        }).await.map_err(|e| anyhow::anyhow!("join error: {}", e))??;
+        let embedding = tokio::task::spawn_blocking(move || service.embed_image(&image_path))
+            .await
+            .map_err(|e| PhotoCurateError::Other(format!("join error: {}", e)))?
+            .map_err(|e| PhotoCurateError::Ai(e.to_string()))?;
         Ok(embedding.into_iter().map(|v| v as f64).collect())
     } else {
-        embed_image_gemini(api_key, image_path).await
+        embed_image_gemini(api_key, image_path)
+            .await
+            .map_err(|e| PhotoCurateError::Ai(e.to_string()))
     }
 }
 
 /// Embed text using the best available method.
 /// If local Chinese-CLIP model is available, use it. Otherwise fall back to Gemini API.
-pub async fn embed_text(api_key: &str, text: &str, local: Option<Arc<ChineseClipService>>) -> Result<Vec<f64>> {
+pub async fn embed_text(
+    api_key: &str,
+    text: &str,
+    local: Option<Arc<ChineseClipService>>,
+) -> Result<Vec<f64>> {
     if let Some(service) = local {
         let text = text.to_string();
-        let embedding = tokio::task::spawn_blocking(move || {
-            service.embed_text(&text)
-        }).await.map_err(|e| anyhow::anyhow!("join error: {}", e))??;
+        let embedding = tokio::task::spawn_blocking(move || service.embed_text(&text))
+            .await
+            .map_err(|e| PhotoCurateError::Other(format!("join error: {}", e)))?
+            .map_err(|e| PhotoCurateError::Ai(e.to_string()))?;
         Ok(embedding.into_iter().map(|v| v as f64).collect())
     } else {
-        embed_text_gemini(api_key, text).await
+        embed_text_gemini(api_key, text)
+            .await
+            .map_err(|e| PhotoCurateError::Ai(e.to_string()))
     }
 }
 
@@ -41,8 +56,15 @@ const SCORE_MODEL: &str = "gemini-3.1-flash-lite";
 const EMBED_MODEL: &str = "gemini-embedding-001";
 
 pub async fn score_image(api_key: &str, image_path: &str) -> Result<ScoreResult> {
+    score_image_internal(api_key, image_path)
+        .await
+        .map_err(|e| PhotoCurateError::Ai(e.to_string()))
+}
+
+async fn score_image_internal(api_key: &str, image_path: &str) -> anyhow::Result<ScoreResult> {
     let image_data = tokio::fs::read(image_path).await?;
-    let base64_image = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &image_data);
+    let base64_image =
+        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &image_data);
     let mime_type = mime_type_for_path(image_path);
 
     let request_body = json!({
@@ -84,7 +106,7 @@ pub async fn score_image(api_key: &str, image_path: &str) -> Result<ScoreResult>
     parse_score_response(text)
 }
 
-async fn embed_text_gemini(api_key: &str, text: &str) -> Result<Vec<f64>> {
+async fn embed_text_gemini(api_key: &str, text: &str) -> anyhow::Result<Vec<f64>> {
     let request_body = json!({
         "model": format!("models/{}", EMBED_MODEL),
         "content": {
@@ -116,22 +138,18 @@ async fn embed_text_gemini(api_key: &str, text: &str) -> Result<Vec<f64>> {
         .as_array()
         .context("missing embedding values")?;
 
-    Ok(values
-        .iter()
-        .filter_map(|v| v.as_f64())
-        .collect())
+    Ok(values.iter().filter_map(|v| v.as_f64()).collect())
 }
 
-async fn embed_image_gemini(api_key: &str, image_path: &str) -> Result<Vec<f64>> {
-    // Gemini doesn't have a direct image embedding API in the free tier.
-    // We use the image caption approach as a pragmatic fallback.
+async fn embed_image_gemini(api_key: &str, image_path: &str) -> anyhow::Result<Vec<f64>> {
     let caption = caption_image(api_key, image_path).await?;
     embed_text_gemini(api_key, &caption).await
 }
 
-async fn caption_image(api_key: &str, image_path: &str) -> Result<String> {
+async fn caption_image(api_key: &str, image_path: &str) -> anyhow::Result<String> {
     let image_data = tokio::fs::read(image_path).await?;
-    let base64_image = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &image_data);
+    let base64_image =
+        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &image_data);
     let mime_type = mime_type_for_path(image_path);
 
     let request_body = json!({
@@ -171,6 +189,12 @@ async fn caption_image(api_key: &str, image_path: &str) -> Result<String> {
 }
 
 pub async fn validate_api_key(api_key: &str) -> Result<(bool, String)> {
+    validate_api_key_internal(api_key)
+        .await
+        .map_err(|e| PhotoCurateError::Ai(e.to_string()))
+}
+
+async fn validate_api_key_internal(api_key: &str) -> anyhow::Result<(bool, String)> {
     if api_key.is_empty() {
         return Ok((false, "API Key 不能为空".to_string()));
     }
@@ -238,7 +262,7 @@ Score: [number]
 Review: [2-3 sentences describing strengths and weaknesses]"#
 }
 
-fn parse_score_response(text: &str) -> Result<ScoreResult> {
+fn parse_score_response(text: &str) -> anyhow::Result<ScoreResult> {
     let score_line = text
         .lines()
         .find(|l| l.to_lowercase().contains("score:"))

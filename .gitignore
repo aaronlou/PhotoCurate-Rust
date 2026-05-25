@@ -18,8 +18,9 @@ __pycache__/
 
 # Large model files (downloaded/converted, not source)
 models/
-src-tauri/src/ai/models/*.onnx
-src-tauri/src/ai/models/*.onnx.data
+src-tauri/src/ai/models/
+*.onnx
+*.onnx.data
 
 # App data & cache
 *.db

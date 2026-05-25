@@ -1,8 +1,7 @@
-use photo_curate_lib::commands::export_photos_internal;
-use photo_curate_lib::db;
-use photo_curate_lib::vector;
+use photo_curate_lib::application::export::export_photos;
+use photo_curate_lib::infrastructure::db;
+use photo_curate_lib::infrastructure::vector;
 use photo_curate_lib::AppState;
-use sqlx::SqlitePool;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -82,8 +81,8 @@ async fn test_export_photos_flat() {
 
     // Export to destination
     let dest_dir = _temp.path().join("export").to_str().unwrap().to_string();
-    let result = export_photos_internal(
-        &state,
+    let result = export_photos(
+        &state.db,
         vec![photo1_id.clone(), photo2_id.clone()],
         dest_dir.clone(),
         Some(false), // flat export
@@ -164,8 +163,8 @@ async fn test_export_photos_with_conflict() {
 
     // Export flat — should auto-rename second file
     let dest_dir = _temp.path().join("export_conflict").to_str().unwrap().to_string();
-    let result = export_photos_internal(
-        &state,
+    let result = export_photos(
+        &state.db,
         vec![photo1_id, photo2_id],
         dest_dir.clone(),
         Some(false),
@@ -209,8 +208,8 @@ async fn test_export_photos_missing_file() {
     .unwrap();
 
     let dest_dir = _temp.path().join("export_missing").to_str().unwrap().to_string();
-    let result = export_photos_internal(
-        &state,
+    let result = export_photos(
+        &state.db,
         vec![photo_id],
         dest_dir,
         Some(false),
@@ -257,8 +256,8 @@ async fn test_export_photos_preserve_structure() {
     .unwrap();
 
     let dest_dir = _temp.path().join("export_struct").to_str().unwrap().to_string();
-    let result = export_photos_internal(
-        &state,
+    let result = export_photos(
+        &state.db,
         vec![photo_id],
         dest_dir.clone(),
         Some(true), // preserve structure

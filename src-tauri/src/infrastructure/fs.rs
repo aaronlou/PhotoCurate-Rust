@@ -1,5 +1,5 @@
-use crate::models::Photo;
-use anyhow::{Context, Result};
+use crate::domain::models::Photo;
+use crate::error::{PhotoCurateError, Result};
 use chrono::{NaiveDateTime, Utc};
 use std::path::Path;
 use std::process::Command;
@@ -194,20 +194,18 @@ pub async fn generate_thumbnail(
         return Ok(thumb_path.to_string_lossy().to_string());
     }
 
-    // Use macOS sips for reliable HEIC/RAW support
     let output = Command::new("sips")
         .args(&[
             "-Z",
             &max_dimension.to_string(),
             photo_path,
             "--out",
-            thumb_path.to_str().context("invalid path")?,
+            thumb_path.to_str().ok_or_else(|| PhotoCurateError::InvalidData("invalid path".into()))?,
         ])
         .output()
-        .context("failed to run sips")?;
+        .map_err(|e| PhotoCurateError::Other(format!("failed to run sips: {}", e)))?;
 
     if !output.status.success() {
-        // Fallback: try image crate for basic formats
         generate_thumbnail_rust(photo_path, &thumb_path, max_dimension).await?;
     }
 
@@ -219,12 +217,15 @@ async fn generate_thumbnail_rust(
     thumb_path: &Path,
     max_dimension: u32,
 ) -> Result<()> {
-    let img = image::open(photo_path)?;
+    let img = image::open(photo_path)
+        .map_err(|e| PhotoCurateError::Image(e.to_string()))?;
     let thumb = img.resize(
         max_dimension,
         max_dimension,
         image::imageops::FilterType::Lanczos3,
     );
-    thumb.save_with_format(thumb_path, image::ImageFormat::Jpeg)?;
+    thumb
+        .save_with_format(thumb_path, image::ImageFormat::Jpeg)
+        .map_err(|e| PhotoCurateError::Image(e.to_string()))?;
     Ok(())
 }
