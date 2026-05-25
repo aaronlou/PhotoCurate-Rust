@@ -163,11 +163,16 @@
     <div class="bg-white rounded-2xl p-8 border border-gray-200">
       <h3 class="text-xl font-bold mb-3">本地 Chinese-CLIP 模型</h3>
       <p class="text-gray-500 text-sm leading-relaxed mb-4">完全离线运行，数据不出本机。Apple Silicon 上使用 CoreML 加速推理。</p>
-      <ul class="text-sm text-gray-500 space-y-2">
+      <ul class="text-sm text-gray-500 space-y-2 mb-5">
         <li class="flex items-start gap-2"><span class="text-green-500 mt-0.5">✓</span> 隐私优先，零网络依赖</li>
         <li class="flex items-start gap-2"><span class="text-green-500 mt-0.5">✓</span> CoreML 硬件加速</li>
         <li class="flex items-start gap-2"><span class="text-green-500 mt-0.5">✓</span> 支持语义搜索</li>
       </ul>
+      <a href="https://github.com/aaronlou/PhotoCurate-Rust/releases/latest/download/chinese_clip_onnx_models.zip" class="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+        下载模型文件（660 MB）
+      </a>
+      <p class="text-xs text-gray-400 mt-2">也支持<a href="https://github.com/aaronlou/PhotoCurate-Rust#%E6%9C%AC%E5%9C%B0%E6%A8%A1%E5%9E%8B%E5%AE%89%E8%A3%85%E5%8F%AF%E9%80%89" class="text-brand-600 hover:underline">一键脚本安装</a>，无需手动操作</p>
     </div>
   </div>
 </section>
@@ -188,6 +193,15 @@
         </a>
         <p class="text-gray-500 text-sm mt-3">双击挂载后拖入 Applications 即可</p>
         <p class="text-gray-600 text-xs mt-2">如提示「无法验证开发者」，请到 系统设置 → 隐私与安全性 → 仍要打开</p>
+      </div>
+
+      <div class="bg-gray-800 rounded-xl p-6 text-center border border-gray-700">
+        <p class="text-gray-400 text-sm mb-3">如需离线语义搜索，还需下载本地 AI 模型</p>
+        <a href="https://github.com/aaronlou/PhotoCurate-Rust/releases/latest/download/chinese_clip_onnx_models.zip" class="inline-flex items-center gap-2 px-6 py-3 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 transition">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+          下载本地模型（660 MB）
+        </a>
+        <p class="text-gray-600 text-xs mt-3">解压后将 4 个文件复制到 <code class="text-gray-400">~/Library/Application Support/com.photocurate/models/</code></p>
       </div>
 
       <div class="relative my-8">
