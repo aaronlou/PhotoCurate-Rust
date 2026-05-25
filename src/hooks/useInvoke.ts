@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { Photo, Directory, AISettings, SearchResult, ExportResult } from "@/types";
+import { Photo, Directory, AISettings, SearchResult, ExportResult, PhotoSortOrder } from "@/types";
 
 // Directory commands
 export async function pickDirectory(): Promise<string | null> {
@@ -27,8 +27,8 @@ export async function removeDirectory(id: string): Promise<void> {
 }
 
 // Photo commands
-export async function getPhotos(): Promise<Photo[]> {
-  return invoke("get_photos");
+export async function getPhotos(sortOrder?: PhotoSortOrder): Promise<Photo[]> {
+  return invoke("get_photos", { sortOrder });
 }
 
 export async function getPhotoById(id: string): Promise<Photo | null> {
@@ -83,4 +83,13 @@ export async function checkLocalModel(): Promise<boolean> {
 
 export async function validateApiKey(apiKey: string): Promise<{ valid: boolean; message: string }> {
   return invoke("validate_api_key", { apiKey });
+}
+
+export async function getIndexStats(): Promise<{ count: number; dimension: number | null }> {
+  const [count, dimension] = await invoke<[number, number | null]>("get_index_stats");
+  return { count, dimension };
+}
+
+export async function rebuildAllIndex(): Promise<number> {
+  return invoke("rebuild_all_index");
 }

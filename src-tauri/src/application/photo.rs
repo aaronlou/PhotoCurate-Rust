@@ -1,12 +1,15 @@
-use crate::domain::models::Photo;
+use crate::domain::models::{Photo, PhotoSortOrder};
 use crate::error::{PhotoCurateError, Result};
 use crate::infrastructure;
 use sqlx::{Pool, Sqlite};
 use std::path::Path;
 
-pub async fn get_photos(db: &Pool<Sqlite>) -> Result<Vec<Photo>> {
+pub async fn get_photos(
+    db: &Pool<Sqlite>,
+    sort_order: Option<PhotoSortOrder>,
+) -> Result<Vec<Photo>> {
     let photo_repo = infrastructure::repositories::SqlitePhotoRepository::new(db.clone());
-    photo_repo.find_all().await
+    photo_repo.find_all(sort_order.as_ref()).await
 }
 
 pub async fn get_photo_by_id(db: &Pool<Sqlite>, id: String) -> Result<Option<Photo>> {

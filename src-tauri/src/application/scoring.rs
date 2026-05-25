@@ -1,9 +1,14 @@
-use crate::domain::models::AiSettings;
+use crate::domain::models::{AiSettings, IndexingProgressEvent};
 use crate::error::{PhotoCurateError, Result};
 use crate::infrastructure;
 use sqlx::{Pool, Sqlite};
+use tauri::Emitter;
 
-pub async fn score_photos(db: &Pool<Sqlite>, photo_ids: Vec<String>) -> Result<()> {
+pub async fn score_photos(
+    db: &Pool<Sqlite>,
+    photo_ids: Vec<String>,
+    app_handle: &tauri::AppHandle,
+) -> Result<()> {
     let settings_repo = infrastructure::repositories::SqliteSettingsRepository::new(db.clone());
     let settings = settings_repo.get().await?;
 
@@ -12,13 +17,14 @@ pub async fn score_photos(db: &Pool<Sqlite>, photo_ids: Vec<String>) -> Result<(
     }
 
     let photo_repo = infrastructure::repositories::SqlitePhotoRepository::new(db.clone());
+    let total = photo_ids.len();
 
-    for photo_id in photo_ids {
-        let photo = photo_repo.find_by_id(&photo_id).await?;
+    for (i, photo_id) in photo_ids.iter().enumerate() {
+        let photo = photo_repo.find_by_id(photo_id).await?;
         if let Some(photo) = photo {
             match infrastructure::ai::score_image(&settings.api_key, &photo.file_path).await {
                 Ok(result) => {
-                    photo_repo.update_score(&photo_id, result.score).await?;
+                    photo_repo.update_score(photo_id, result.score).await?;
                     tracing::info!("Scored {} = {}", photo.file_name, result.score);
                 }
                 Err(e) => {
@@ -26,7 +32,26 @@ pub async fn score_photos(db: &Pool<Sqlite>, photo_ids: Vec<String>) -> Result<(
                 }
             }
         }
+
+        let _ = app_handle.emit(
+            "scoring-progress",
+            IndexingProgressEvent {
+                current: i + 1,
+                total,
+                status: "indexing".into(),
+            },
+        );
     }
+
+    let _ = app_handle.emit(
+        "scoring-progress",
+        IndexingProgressEvent {
+            current: total,
+            total,
+            status: "complete".into(),
+        },
+    );
+
     Ok(())
 }
 

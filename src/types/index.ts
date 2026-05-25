@@ -64,5 +64,12 @@ export interface ExportResult {
   failed_photos: ExportFailure[];
 }
 
+export interface IndexingProgress {
+  current: number;
+  total: number;
+  status: "started" | "indexing" | "complete" | "unavailable";
+}
+
 export type ViewMode = "browser" | "grid" | "list";
 export type NavItem = "library" | "scoring" | "search" | "export";
+export type PhotoSortOrder = "date_desc" | "score_desc" | "score_asc";

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAppStore } from "@/stores/useAppStore";
-import { getPhotos, scorePhotos, buildSearchIndex, validateApiKey, updateAiSettings, checkLocalModel } from "@/hooks/useInvoke";
-import { Star, Play, Database, Settings, Check, AlertCircle, Cpu } from "lucide-react";
+import { getPhotos, scorePhotos, validateApiKey, updateAiSettings, checkLocalModel } from "@/hooks/useInvoke";
+import { Star, Play, Settings, Check, AlertCircle, Cpu } from "lucide-react";
 
 export default function ScoringView() {
   const photos = useAppStore((s) => s.photos);
@@ -10,17 +10,18 @@ export default function ScoringView() {
   const setIsScoring = useAppStore((s) => s.setIsScoring);
   const scoreProgress = useAppStore((s) => s.scoreProgress);
   const setScoreProgress = useAppStore((s) => s.setScoreProgress);
+  const isIndexing = useAppStore((s) => s.isIndexing);
+  const indexProgress = useAppStore((s) => s.indexProgress);
+  const photoSortOrder = useAppStore((s) => s.photoSortOrder);
 
   const [showSettings, setShowSettings] = useState(false);
   const [apiKey, setApiKey] = useState("");
   const [keyStatus, setKeyStatus] = useState<{ valid: boolean; message: string } | null>(null);
   const [localModelAvailable, setLocalModelAvailable] = useState<boolean | null>(null);
-
-  const [isIndexing, setIsIndexing] = useState(false);
-  const [indexProgress, setIndexProgress] = useState<{ current: number; total: number } | null>(null);
+  const [scoreError, setScoreError] = useState<string | null>(null);
 
   const unscoredCount = photos.filter((p) => !p.has_been_scored).length;
-  const unindexedCount = photos.filter((p) => !p.has_embedding).length;
+  const indexedCount = photos.filter((p) => p.has_embedding).length;
 
   useEffect(() => {
     checkLocalModel().then(setLocalModelAvailable).catch(() => setLocalModelAvailable(false));
@@ -30,17 +31,16 @@ export default function ScoringView() {
     const unscored = photos.filter((p) => !p.has_been_scored).slice(0, 50);
     if (unscored.length === 0) return;
 
+    setScoreError(null);
     setIsScoring(true);
     setScoreProgress({ current: 0, total: unscored.length });
 
     try {
-      // TODO: implement streaming progress from Rust
       await scorePhotos(unscored.map((p) => p.id));
-      const updated = await getPhotos();
+      const updated = await getPhotos(photoSortOrder);
       setPhotos(updated);
     } catch (e) {
-      console.error(e);
-    } finally {
+      setScoreError(typeof e === "string" ? e : String(e));
       setIsScoring(false);
       setScoreProgress(null);
     }
@@ -52,25 +52,6 @@ export default function ScoringView() {
     setKeyStatus(result);
     if (result.valid) {
       await updateAiSettings({ api_key: apiKey.trim(), provider: "gemini" });
-    }
-  };
-
-  const handleBuildIndex = async () => {
-    const unindexed = photos.filter((p) => !p.has_embedding).slice(0, 50);
-    if (unindexed.length === 0) return;
-
-    setIsIndexing(true);
-    setIndexProgress({ current: 0, total: unindexed.length });
-
-    try {
-      await buildSearchIndex(unindexed.map((p) => p.id));
-      const updated = await getPhotos();
-      setPhotos(updated);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsIndexing(false);
-      setIndexProgress(null);
     }
   };
 
@@ -91,6 +72,12 @@ export default function ScoringView() {
               {localModelAvailable ? "本地 Chinese-CLIP 模型已加载" : "本地模型未加载，搜索将使用 Gemini API"}
             </div>
           )}
+          <div className="flex items-center gap-1.5 mt-1 text-xs text-gray-500">
+            <span>
+              已索引: {indexedCount}/{photos.length} 张
+              {isIndexing && indexProgress && `（后台索引中 ${indexProgress.current}/${indexProgress.total}）`}
+            </span>
+          </div>
         </div>
         <button
           onClick={() => setShowSettings(!showSettings)}
@@ -156,10 +143,17 @@ export default function ScoringView() {
           </button>
         </div>
 
+        {scoreError && (
+          <div className="mt-3 flex items-center gap-1.5 text-xs text-red-500">
+            <AlertCircle size={14} />
+            {scoreError}
+          </div>
+        )}
+
         {isScoring && scoreProgress && (
           <div className="mt-4">
             <div className="flex justify-between text-xs text-gray-500 mb-1">
-              <span>进度</span>
+              <span>评分进度</span>
               <span>
                 {scoreProgress.current} / {scoreProgress.total}
               </span>
@@ -169,47 +163,6 @@ export default function ScoringView() {
                 className="bg-blue-600 h-2 rounded-full transition-all"
                 style={{
                   width: `${(scoreProgress.current / scoreProgress.total) * 100}%`,
-                }}
-              />
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-gray-600">
-              待索引照片: <span className="font-semibold text-gray-800">{unindexedCount}</span> 张
-            </p>
-            <p className="text-xs text-gray-400 mt-1">
-              已索引: {photos.filter((p) => p.has_embedding).length} 张
-              {localModelAvailable ? "（本地 Chinese-CLIP）" : "（Gemini API）"}
-            </p>
-          </div>
-          <button
-            onClick={handleBuildIndex}
-            disabled={isIndexing || unindexedCount === 0}
-            className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white text-sm font-medium rounded-md hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Database size={16} />
-            {isIndexing ? "索引中..." : "建立搜索索引"}
-          </button>
-        </div>
-
-        {isIndexing && indexProgress && (
-          <div className="mt-4">
-            <div className="flex justify-between text-xs text-gray-500 mb-1">
-              <span>进度</span>
-              <span>
-                {indexProgress.current} / {indexProgress.total}
-              </span>
-            </div>
-            <div className="w-full bg-gray-100 rounded-full h-2">
-              <div
-                className="bg-emerald-600 h-2 rounded-full transition-all"
-                style={{
-                  width: `${(indexProgress.current / indexProgress.total) * 100}%`,
                 }}
               />
             </div>

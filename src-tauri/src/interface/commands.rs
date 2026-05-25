@@ -1,7 +1,7 @@
 use crate::application;
 use crate::domain::models::{AiSettings, Directory, ExportResult, Photo, SearchResult};
 use crate::error::PhotoCurateError;
-use crate::AppState;
+use crate::{start_background_indexing, AppState};
 use tauri::State;
 
 fn map_err<T>(result: Result<T, PhotoCurateError>) -> Result<T, String> {
@@ -18,9 +18,10 @@ pub async fn pick_directory() -> Result<Option<String>, String> {
 #[tauri::command]
 pub async fn add_directory(
     state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
     path: String,
 ) -> Result<Directory, String> {
-    map_err(
+    let result = map_err(
         application::directory::add_directory(
             &state.db,
             &state.thumbnail_dir,
@@ -28,7 +29,9 @@ pub async fn add_directory(
             path,
         )
         .await,
-    )
+    )?;
+    start_background_indexing(&app_handle);
+    Ok(result)
 }
 
 #[tauri::command]
@@ -46,8 +49,11 @@ pub async fn remove_directory(state: State<'_, AppState>, id: String) -> Result<
 // ==================== Photo Commands ====================
 
 #[tauri::command]
-pub async fn get_photos(state: State<'_, AppState>) -> Result<Vec<Photo>, String> {
-    map_err(application::photo::get_photos(&state.db).await)
+pub async fn get_photos(
+    state: State<'_, AppState>,
+    sort_order: Option<crate::domain::models::PhotoSortOrder>,
+) -> Result<Vec<Photo>, String> {
+    map_err(application::photo::get_photos(&state.db, sort_order).await)
 }
 
 #[tauri::command]
@@ -73,11 +79,14 @@ pub async fn get_thumbnail_path(
 #[tauri::command]
 pub async fn start_scanning(
     state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
     directory_id: String,
 ) -> Result<(), String> {
     map_err(
         application::photo::scan_directory(&state.db, &state.thumbnail_dir, &directory_id).await,
-    )
+    )?;
+    start_background_indexing(&app_handle);
+    Ok(())
 }
 
 // ==================== Scoring ====================
@@ -85,9 +94,10 @@ pub async fn start_scanning(
 #[tauri::command]
 pub async fn score_photos(
     state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
     photo_ids: Vec<String>,
 ) -> Result<(), String> {
-    map_err(application::scoring::score_photos(&state.db, photo_ids).await)
+    map_err(application::scoring::score_photos(&state.db, photo_ids, &app_handle).await)
 }
 
 // ==================== Search Index ====================
@@ -159,6 +169,30 @@ pub async fn update_ai_settings(
 #[tauri::command]
 pub async fn check_local_model(state: State<'_, AppState>) -> Result<bool, String> {
     Ok(state.chinese_clip.is_some())
+}
+
+#[tauri::command]
+pub async fn get_index_stats(
+    state: State<'_, AppState>,
+) -> Result<(usize, Option<usize>), String> {
+    let index = state.vector_index.read().await;
+    Ok(index.stats())
+}
+
+#[tauri::command]
+pub async fn rebuild_all_index(
+    state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+) -> Result<usize, String> {
+    map_err(
+        application::search::rebuild_all_index(
+            &state.db,
+            &state.vector_index,
+            &state.chinese_clip,
+            &app_handle,
+        )
+        .await,
+    )
 }
 
 #[tauri::command]

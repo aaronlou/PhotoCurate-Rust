@@ -111,3 +111,20 @@ pub struct ExportFailure {
     pub file_name: String,
     pub error: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IndexingProgressEvent {
+    pub current: usize,
+    pub total: usize,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum PhotoSortOrder {
+    #[serde(rename = "date_desc")]
+    DateDesc,
+    #[serde(rename = "score_desc")]
+    ScoreDesc,
+    #[serde(rename = "score_asc")]
+    ScoreAsc,
+}

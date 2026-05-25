@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { Photo, Directory, AISettings, ViewMode, NavItem } from "@/types";
+import { Photo, Directory, AISettings, ViewMode, NavItem, PhotoSortOrder } from "@/types";
 
 interface AppState {
   currentView: NavItem;
@@ -16,6 +16,9 @@ interface AppState {
   viewMode: ViewMode;
   setViewMode: (mode: ViewMode) => void;
 
+  photoSortOrder: PhotoSortOrder;
+  setPhotoSortOrder: (order: PhotoSortOrder) => void;
+
   aiSettings: AISettings | null;
   setAiSettings: (settings: AISettings | null) => void;
 
@@ -28,6 +31,11 @@ interface AppState {
   setIsScoring: (v: boolean) => void;
   scoreProgress: { current: number; total: number } | null;
   setScoreProgress: (p: { current: number; total: number } | null) => void;
+
+  isIndexing: boolean;
+  setIsIndexing: (v: boolean) => void;
+  indexProgress: { current: number; total: number } | null;
+  setIndexProgress: (p: { current: number; total: number } | null) => void;
 
   searchQuery: string;
   setSearchQuery: (q: string) => void;
@@ -50,6 +58,9 @@ export const useAppStore = create<AppState>((set) => ({
   viewMode: "browser",
   setViewMode: (mode) => set({ viewMode: mode }),
 
+  photoSortOrder: "date_desc",
+  setPhotoSortOrder: (order) => set({ photoSortOrder: order }),
+
   aiSettings: null,
   setAiSettings: (settings) => set({ aiSettings: settings }),
 
@@ -62,6 +73,11 @@ export const useAppStore = create<AppState>((set) => ({
   setIsScoring: (v) => set({ isScoring: v }),
   scoreProgress: null,
   setScoreProgress: (p) => set({ scoreProgress: p }),
+
+  isIndexing: false,
+  setIsIndexing: (v) => set({ isIndexing: v }),
+  indexProgress: null,
+  setIndexProgress: (p) => set({ indexProgress: p }),
 
   searchQuery: "",
   setSearchQuery: (q) => set({ searchQuery: q }),

@@ -4,6 +4,7 @@ use photo_curate_lib::infrastructure::vector;
 use photo_curate_lib::AppState;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -24,6 +25,7 @@ async fn create_test_state() -> (AppState, tempfile::TempDir) {
         vector_index,
         monitors,
         chinese_clip,
+        is_indexing: Arc::new(AtomicBool::new(false)),
     };
 
     (state, temp_dir)

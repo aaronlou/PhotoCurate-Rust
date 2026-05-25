@@ -40,12 +40,12 @@ PhotoCurate 的评分和语义搜索需要 AI 能力，你有两种选择：
 
 **方式 B：本地 Chinese-CLIP 模型（离线，无需网络）**
 
-如果你希望完全不依赖网络和 API Key，可以使用本地模型（仅支持语义搜索，评分仍需 Gemini API）：
+如果你希望完全不依赖网络和 API Key，可以使用本地模型。本地模型仅支持语义搜索，评分仍需 Gemini API：
 
 ```bash
-# 1. 安装 Python 依赖
+# 1. 创建 Python 虚拟环境并安装依赖
 python3 -m venv .venv && source .venv/bin/activate
-pip install modelscope torch transformers onnx onnxscript
+pip install modelscope torch transformers onnx onnxscript Pillow
 
 # 2. 从 ModelScope 下载模型（约 720 MB）
 python3 -c "
@@ -54,18 +54,11 @@ snapshot_download('damo/multi-modal_clip-vit-base-patch16_zh',
                   local_dir='models/chinese-clip-vit-base-patch16')
 "
 
-# 3. 转换为 ONNX 格式（生成约 720 MB 的 ONNX 文件）
-python3 scripts/convert_chinese_clip_modelscope.py
-
-# 4. 复制模型文件到运行时目录
-mkdir -p ~/Library/Application\ Support/com.photocurate/models/
-cp src-tauri/src/ai/models/chinese_clip_*.onnx \
-   src-tauri/src/ai/models/chinese_clip_config.json \
-   src-tauri/src/ai/models/vocab.txt \
-   ~/Library/Application\ Support/com.photocurate/models/
+# 3. 运行转换脚本，生成约 720 MB 的 ONNX 文件并自动复制到运行时目录
+python3 scripts/export_chinese_clip_onnx.py
 ```
 
-> macOS 上的模型文件路径为 `~/Library/Application Support/com.photocurate/models/`。如果文件不存在，应用启动时不会报错，只是无法使用本地模型，仍可通过 Gemini API 使用语义搜索。
+> 脚本会自动将 ONNX 文件复制到 `~/Library/Application Support/com.photocurate/models/`。应用启动时检测到模型文件即自动加载，否则回退到 Gemini API。
 
 ---
 
@@ -85,10 +78,10 @@ npm run tauri-dev
 
 ## 使用流程
 
-1. **导入照片** — 点击左侧「图库」，添加你的照片文件夹
-2. **AI 评分** — 切换到「评分」页，配置 Gemini API Key 后开始评分
-3. **智能检索** — 在「搜索」页输入中文描述，找到你想要的画面
-4. **精选导出** — 在「导出」页设置评分门槛，一键导出
+1. **导入照片** — 点击左侧「图库」，添加你的照片文件夹。应用会自动扫描照片，并在后台生成搜索索引
+2. **AI 评分** — 切换到「评分」页，配置 Gemini API Key 后开始评分，进度条实时更新
+3. **智能检索** — 照片索引完成后，在「搜索」页输入中文描述即可找到匹配的画面，无需手动操作
+4. **精选导出** — 在「导出」页设置评分门槛，一键导出高分照片
 
 ---
 

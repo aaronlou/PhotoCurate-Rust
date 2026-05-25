@@ -19,11 +19,19 @@ impl SqlitePhotoRepository {
         Ok(photo)
     }
 
-    pub async fn find_all(&self) -> Result<Vec<Photo>> {
-        let photos =
-            sqlx::query_as::<_, Photo>("SELECT * FROM photos ORDER BY date_modified DESC")
-                .fetch_all(&self.db)
-                .await?;
+    pub async fn find_all(&self, sort_order: Option<&crate::domain::models::PhotoSortOrder>) -> Result<Vec<Photo>> {
+        let query = match sort_order {
+            Some(crate::domain::models::PhotoSortOrder::ScoreDesc) => {
+                "SELECT * FROM photos ORDER BY aesthetic_score IS NULL, aesthetic_score DESC"
+            }
+            Some(crate::domain::models::PhotoSortOrder::ScoreAsc) => {
+                "SELECT * FROM photos ORDER BY aesthetic_score IS NULL, aesthetic_score ASC"
+            }
+            _ => "SELECT * FROM photos ORDER BY date_modified DESC",
+        };
+        let photos = sqlx::query_as::<_, Photo>(query)
+            .fetch_all(&self.db)
+            .await?;
         Ok(photos)
     }
 
@@ -100,6 +108,15 @@ impl SqlitePhotoRepository {
         Ok(())
     }
 
+    pub async fn reset_all_embeddings(&self) -> Result<()> {
+        sqlx::query(
+            "UPDATE photos SET has_embedding = 0, embedding_version = NULL",
+        )
+        .execute(&self.db)
+        .await?;
+        Ok(())
+    }
+
     pub async fn update_export_status(&self, id: &str) -> Result<()> {
         sqlx::query(
             "UPDATE photos SET has_been_exported = 1, export_date = ?1 WHERE id = ?2",
@@ -122,6 +139,15 @@ impl SqlitePhotoRepository {
             q = q.bind(id);
         }
         let photos = q.fetch_all(&self.db).await?;
+        Ok(photos)
+    }
+
+    pub async fn find_unindexed(&self) -> Result<Vec<Photo>> {
+        let photos = sqlx::query_as::<_, Photo>(
+            "SELECT * FROM photos WHERE has_embedding = 0",
+        )
+        .fetch_all(&self.db)
+        .await?;
         Ok(photos)
     }
 }
@@ -263,6 +289,13 @@ impl SqliteVectorRepository {
         .bind(chrono::Utc::now())
         .execute(&self.db)
         .await?;
+        Ok(())
+    }
+
+    pub async fn delete_all(&self) -> Result<()> {
+        sqlx::query("DELETE FROM vector_entries")
+            .execute(&self.db)
+            .await?;
         Ok(())
     }
 }

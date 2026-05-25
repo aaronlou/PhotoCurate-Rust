@@ -12,7 +12,6 @@ pub struct VectorEntry {
 #[derive(Debug, Default)]
 pub struct VectorIndex {
     entries: HashMap<String, Vec<f64>>,
-    dimension: usize,
 }
 
 pub type SharedVectorIndex = Arc<RwLock<VectorIndex>>;
@@ -22,14 +21,7 @@ pub fn create_index() -> SharedVectorIndex {
 }
 
 impl VectorIndex {
-    pub fn configure(&mut self, dimension: usize) {
-        self.dimension = dimension;
-    }
-
     pub fn add(&mut self, photo_id: String, vector: Vec<f64>) {
-        if self.dimension == 0 {
-            self.dimension = vector.len();
-        }
         self.entries.insert(photo_id, vector);
     }
 
@@ -41,12 +33,25 @@ impl VectorIndex {
         self.entries.clear();
     }
 
-    pub fn search(&self, query: &[f64], top_k: usize, min_similarity: f64) -> Vec<(String, f64)> {
+    pub fn search(
+        &self,
+        query: &[f64],
+        top_k: usize,
+        min_similarity: f64,
+    ) -> Vec<(String, f64)> {
+        if self.entries.is_empty() {
+            return vec![];
+        }
+
         let query_norm = normalize(query);
         let mut results: Vec<(String, f64)> = self
             .entries
             .iter()
             .filter_map(|(id, vec)| {
+                // Skip entries with mismatched dimensions
+                if vec.len() != query.len() {
+                    return None;
+                }
                 let similarity = cosine_similarity(&query_norm, &normalize(vec));
                 if similarity >= min_similarity {
                     Some((id.clone(), similarity))
@@ -58,6 +63,19 @@ impl VectorIndex {
 
         results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         results.into_iter().take(top_k).collect()
+    }
+
+    pub fn stats(&self) -> (usize, Option<usize>) {
+        let dim = self.entries.values().next().map(|v| v.len());
+        (self.entries.len(), dim)
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
     }
 }
 

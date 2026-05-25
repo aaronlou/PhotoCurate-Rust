@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useAppStore } from "@/stores/useAppStore";
 import { pickDirectory, addDirectory, getPhotos, getDirectories } from "@/hooks/useInvoke";
-import { FolderPlus, LayoutGrid, List, Image as ImageIcon } from "lucide-react";
+import { FolderPlus, LayoutGrid, List, Image as ImageIcon, ArrowDownAZ, ArrowUpAZ, CalendarDays, ChevronDown } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -18,8 +18,11 @@ export default function LibraryView() {
   const setSelectedPhoto = useAppStore((s) => s.setSelectedPhoto);
   const viewMode = useAppStore((s) => s.viewMode);
   const setViewMode = useAppStore((s) => s.setViewMode);
+  const photoSortOrder = useAppStore((s) => s.photoSortOrder);
+  const setPhotoSortOrder = useAppStore((s) => s.setPhotoSortOrder);
   const [isAdding, setIsAdding] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [showSortMenu, setShowSortMenu] = useState(false);
 
   const handleAddDirectory = async () => {
     setIsAdding(true);
@@ -32,7 +35,7 @@ export default function LibraryView() {
         console.log("[DEBUG] Added directory:", dir);
         const dirs = await getDirectories();
         setDirectories(dirs);
-        const ps = await getPhotos();
+        const ps = await getPhotos(photoSortOrder);
         console.log("[DEBUG] Photos loaded:", ps.length);
         setPhotos(ps);
       }
@@ -43,6 +46,24 @@ export default function LibraryView() {
       setIsAdding(false);
     }
   };
+
+  const handleSortChange = async (order: "date_desc" | "score_desc" | "score_asc") => {
+    setPhotoSortOrder(order);
+    setShowSortMenu(false);
+    try {
+      const ps = await getPhotos(order);
+      setPhotos(ps);
+    } catch (e: any) {
+      console.error("[DEBUG] Sort photos failed:", e);
+    }
+  };
+
+  const sortLabel =
+    photoSortOrder === "score_desc"
+      ? "评分从高到低"
+      : photoSortOrder === "score_asc"
+      ? "评分从低到高"
+      : "按时间排序";
 
   if (photos.length === 0) {
     return (
@@ -71,6 +92,59 @@ export default function LibraryView() {
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100">
         <span className="text-[11px] text-gray-400">{photos.length} 张照片</span>
         <div className="flex items-center gap-2">
+          {/* Sort dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setShowSortMenu(!showSortMenu)}
+              className="flex items-center gap-1 px-2 py-1 text-xs text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-md"
+            >
+              {photoSortOrder === "score_desc" && <ArrowDownAZ size={13} />}
+              {photoSortOrder === "score_asc" && <ArrowUpAZ size={13} />}
+              {photoSortOrder === "date_desc" && <CalendarDays size={13} />}
+              <span>{sortLabel}</span>
+              <ChevronDown size={12} />
+            </button>
+            {showSortMenu && (
+              <>
+                <div
+                  className="fixed inset-0 z-10"
+                  onClick={() => setShowSortMenu(false)}
+                />
+                <div className="absolute right-0 top-full mt-1 w-40 bg-white border border-gray-200 rounded-md shadow-lg z-20 py-1">
+                  <button
+                    onClick={() => handleSortChange("date_desc")}
+                    className={cn(
+                      "flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left hover:bg-gray-50",
+                      photoSortOrder === "date_desc" && "text-blue-600 bg-blue-50"
+                    )}
+                  >
+                    <CalendarDays size={13} />
+                    按时间排序
+                  </button>
+                  <button
+                    onClick={() => handleSortChange("score_desc")}
+                    className={cn(
+                      "flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left hover:bg-gray-50",
+                      photoSortOrder === "score_desc" && "text-blue-600 bg-blue-50"
+                    )}
+                  >
+                    <ArrowDownAZ size={13} />
+                    评分从高到低
+                  </button>
+                  <button
+                    onClick={() => handleSortChange("score_asc")}
+                    className={cn(
+                      "flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left hover:bg-gray-50",
+                      photoSortOrder === "score_asc" && "text-blue-600 bg-blue-50"
+                    )}
+                  >
+                    <ArrowUpAZ size={13} />
+                    评分从低到高
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
           <div className="flex bg-gray-100 rounded-md p-0.5">
             <button
               onClick={() => setViewMode("grid")}

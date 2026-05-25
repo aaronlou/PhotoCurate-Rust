@@ -1,6 +1,7 @@
 use sqlx::{Pool, Sqlite};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::Manager;
 use tokio::sync::Mutex;
@@ -19,6 +20,7 @@ pub struct AppState {
     pub vector_index: infrastructure::vector::SharedVectorIndex,
     pub monitors: Arc<Mutex<HashMap<String, (String, notify::RecommendedWatcher)>>>,
     pub chinese_clip: Option<Arc<infrastructure::ai::ChineseClipService>>,
+    pub is_indexing: Arc<AtomicBool>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -53,9 +55,39 @@ pub fn run() {
             interface::commands::update_ai_settings,
             interface::commands::check_local_model,
             interface::commands::validate_api_key,
+            interface::commands::get_index_stats,
+            interface::commands::rebuild_all_index,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+pub fn start_background_indexing(app_handle: &tauri::AppHandle) {
+    let state = app_handle.state::<AppState>();
+
+    if state
+        .is_indexing
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        tracing::debug!("Indexing already in progress, skipping");
+        return;
+    }
+
+    let db = state.db.clone();
+    let vi = state.vector_index.clone();
+    let cc = state.chinese_clip.clone();
+    let handle = app_handle.clone();
+    let is_indexing = state.is_indexing.clone();
+
+    tokio::spawn(async move {
+        tracing::info!("Starting background indexing...");
+        match application::search::auto_index_unindexed(&db, &vi, &cc, &handle).await {
+            Ok(()) => tracing::info!("Background indexing completed"),
+            Err(e) => tracing::error!("Background indexing failed: {}", e),
+        }
+        is_indexing.store(false, Ordering::SeqCst);
+    });
 }
 
 async fn setup_app(app: tauri::AppHandle) -> anyhow::Result<()> {
@@ -104,9 +136,12 @@ async fn setup_app(app: tauri::AppHandle) -> anyhow::Result<()> {
         vector_index,
         monitors: Arc::new(Mutex::new(HashMap::new())),
         chinese_clip,
+        is_indexing: Arc::new(AtomicBool::new(false)),
     };
 
     app.manage(state);
+
+    start_background_indexing(&app);
 
     Ok(())
 }
