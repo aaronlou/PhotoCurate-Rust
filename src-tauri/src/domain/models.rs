@@ -68,6 +68,7 @@ pub struct AiSettings {
     pub id: String,
     pub provider: String,
     pub api_key: String,
+    pub has_api_key: bool,
     pub ollama_base_url: String,
     pub ollama_embed_model: String,
     pub ollama_vision_model: String,

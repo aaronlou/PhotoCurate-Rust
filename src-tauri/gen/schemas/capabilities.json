@@ -1,1 +1,1 @@
-{"default":{"identifier":"default","description":"Default capabilities for the app","local":true,"windows":["main"],"permissions":["core:default","dialog:default","dialog:allow-open","fs:default","fs:allow-app-read","fs:allow-app-write","fs:allow-appdata-read","fs:allow-appdata-write","fs:allow-home-read","fs:scope-home","fs:scope-appdata","shell:default"]}}
+{"default":{"identifier":"default","description":"Default capabilities for the app","local":true,"windows":["main"],"permissions":["core:default","dialog:default","dialog:allow-open"]}}

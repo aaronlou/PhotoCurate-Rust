@@ -52,14 +52,14 @@
 
 <section>
   <h2 class="text-2xl font-bold text-brand-800 mb-4">3. 本地存储的数据</h2>
-  <p>以下数据<strong>仅存储</strong>在您设备的本地 SQLite 数据库中：</p>
+  <p>以下数据<strong>仅存储</strong>在您的设备上：</p>
   <ul class="list-disc pl-6 mt-2 space-y-2">
     <li><strong>已添加的照片文件夹路径：</strong>您通过系统对话框选择的目录</li>
     <li><strong>照片元数据：</strong>从 EXIF 提取的拍摄日期、相机型号、光圈、快门等</li>
     <li><strong>AI 评分结果：</strong>照片的美学评分（0-100 分）</li>
     <li><strong>AI 搜索索引：</strong>图像向量嵌入数据（用于语义搜索）</li>
     <li><strong>缩略图缓存：</strong>照片缩略图文件</li>
-    <li><strong>API Key：</strong>您可选的 Gemini API Key</li>
+    <li><strong>API Key 状态：</strong>是否已配置 Gemini API Key；实际 Key 存储在 macOS Keychain 中，不写入本地 SQLite 数据库</li>
   </ul>
   <p class="mt-3">所有这些数据<strong>完全存储在您的设备上</strong>，您可以随时删除应用及其数据目录来清除所有数据。</p>
 </section>
@@ -112,7 +112,7 @@
     <li>所有本地数据存储在您的设备上，使用 SQLite 格式</li>
     <li>与 Gemini API 的通信使用 HTTPS 加密</li>
     <li>本应用不传输、不备份、不同步您的数据到任何云端</li>
-    <li>您的 API Key 仅存储在本地数据库，不会上传给开发者</li>
+    <li>您的 API Key 存储在 macOS Keychain 中，不会上传给开发者</li>
   </ul>
 </section>
 

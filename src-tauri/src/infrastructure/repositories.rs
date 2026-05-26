@@ -102,6 +102,7 @@ impl From<AiSettingsRow> for AiSettings {
             id: row.id,
             provider: row.provider,
             api_key: row.api_key,
+            has_api_key: false,
             ollama_base_url: row.ollama_base_url,
             ollama_embed_model: row.ollama_embed_model,
             ollama_vision_model: row.ollama_vision_model,

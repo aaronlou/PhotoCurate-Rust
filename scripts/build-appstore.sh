@@ -30,6 +30,7 @@ set -euo pipefail
 #
 # Usage:
 #   export APPLE_SIGNING_IDENTITY="Apple Distribution: Aaron Lou (V63B559WYX)"
+#   export APPLE_INSTALLER_IDENTITY="3rd Party Mac Developer Installer: Aaron Lou (V63B559WYX)"
 #   export APPLE_PROVIDER_SHORT_NAME="V63B559WYX"
 #   bash scripts/build-appstore.sh
 #
@@ -52,9 +53,10 @@ check_var() {
 }
 
 check_var APPLE_SIGNING_IDENTITY
+check_var APPLE_INSTALLER_IDENTITY
 check_var APPLE_PROVIDER_SHORT_NAME
 
-# --- Verify certificate exists in Keychain ---
+# --- Verify certificates exist in Keychain ---
 echo -e "${YELLOW}Verifying signing certificate...${NC}"
 if security find-identity -v -p macappstore -s "$APPLE_SIGNING_IDENTITY" 2>/dev/null | grep -q "$APPLE_SIGNING_IDENTITY"; then
     echo -e "  ${GREEN}Found:${NC} $APPLE_SIGNING_IDENTITY"
@@ -68,6 +70,30 @@ else
     echo "  See prerequisites in this script's header comments."
     exit 1
 fi
+
+echo -e "${YELLOW}Verifying installer certificate...${NC}"
+if security find-identity -v -p basic -s "$APPLE_INSTALLER_IDENTITY" 2>/dev/null | grep -q "$APPLE_INSTALLER_IDENTITY"; then
+    echo -e "  ${GREEN}Found:${NC} $APPLE_INSTALLER_IDENTITY"
+else
+    echo -e "${RED}Installer certificate not found in Keychain:${NC} $APPLE_INSTALLER_IDENTITY"
+    echo ""
+    echo "  Available signing identities in your Keychain:"
+    security find-identity -v -p basic 2>/dev/null || echo "  (none)"
+    exit 1
+fi
+
+echo -e "${YELLOW}Validating release metadata...${NC}"
+plutil -lint src-tauri/Entitlements.plist >/dev/null
+plutil -lint src-tauri/PrivacyInfo.xcprivacy >/dev/null
+if grep -q 'shell:' src-tauri/capabilities/default.json; then
+    echo -e "${RED}Refusing App Store build: shell capability is enabled.${NC}"
+    exit 1
+fi
+if grep -q 'fs:allow-home-read\|fs:scope-home' src-tauri/capabilities/default.json src-tauri/tauri.conf.json; then
+    echo -e "${RED}Refusing App Store build: broad home-directory access is enabled.${NC}"
+    exit 1
+fi
+echo -e "  ${GREEN}Metadata OK${NC}"
 
 # --- Verify provisioning profile exists ---
 echo -e "${YELLOW}Checking provisioning profiles...${NC}"
@@ -116,15 +142,23 @@ codesign --sign "$APPLE_SIGNING_IDENTITY" \
     "$APP_PATH" 2>&1
 echo -e "  ${GREEN}Re-signed${NC}"
 
+# --- Verify signed bundle ---
+echo -e "\n${YELLOW}Verifying signed .app...${NC}"
+codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+codesign --display --entitlements :- "$APP_PATH" | grep -q "com.apple.security.app-sandbox"
+test -f "$APP_PATH/Contents/Resources/PrivacyInfo.xcprivacy"
+echo -e "  ${GREEN}.app signature, sandbox entitlement, and privacy manifest verified${NC}"
+
 # --- Build .pkg ---
 echo -e "\n${YELLOW}Building .pkg for App Store submission...${NC}"
-INSTALLER_IDENTITY="3rd Party Mac Developer Installer: Aaron Lou (V63B559WYX)"
 PKG_PATH="src-tauri/target/release/bundle/macos/PhotoCurate.pkg"
 
 productbuild --component "$APP_PATH" /Applications \
-    --sign "$INSTALLER_IDENTITY" \
+    --sign "$APPLE_INSTALLER_IDENTITY" \
     "$PKG_PATH" 2>&1
 echo -e "  ${GREEN}.pkg created and signed${NC}"
+
+pkgutil --check-signature "$PKG_PATH"
 
 echo -e "\n${GREEN}=== Build Complete ===${NC}"
 echo ""

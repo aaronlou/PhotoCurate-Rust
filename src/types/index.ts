@@ -37,6 +37,7 @@ export interface AISettings {
   id: string;
   provider: "gemini";
   api_key: string;
+  has_api_key: boolean;
 }
 
 export interface ScoreResult {

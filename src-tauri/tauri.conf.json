@@ -27,7 +27,7 @@
       "capabilities": ["default"],
       "assetProtocol": {
         "enable": true,
-        "scope": ["$APPDATA/**", "$HOME/**"]
+        "scope": ["$APPDATA/**"]
       }
     }
   },

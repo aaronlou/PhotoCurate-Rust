@@ -182,10 +182,10 @@ pub async fn natural_language_search_with(
     embeddings: &impl EmbeddingService,
     query: String,
 ) -> Result<Vec<SearchResult>> {
-    let settings = settings.get().await?;
-    require_embedding_service(&settings.api_key, embeddings)?;
+    let api_key = crate::application::scoring::resolve_api_key_from_settings(settings).await?;
+    require_embedding_service(&api_key, embeddings)?;
 
-    let query_embedding = embeddings.embed_text(&settings.api_key, &query).await?;
+    let query_embedding = embeddings.embed_text(&api_key, &query).await?;
     let matches = index
         .search(&query_embedding, SEARCH_LIMIT, SEARCH_MIN_SIMILARITY)
         .await;
@@ -223,8 +223,8 @@ async fn index_photos(
     photos_to_index: Vec<Photo>,
     emit_progress: bool,
 ) -> Result<usize> {
-    let settings = settings_repo.get().await?;
-    require_embedding_service(&settings.api_key, embeddings)?;
+    let api_key = crate::application::scoring::resolve_api_key_from_settings(settings_repo).await?;
+    require_embedding_service(&api_key, embeddings)?;
 
     let total = photos_to_index.len();
     if emit_progress {
@@ -241,7 +241,7 @@ async fn index_photos(
 
     let mut indexed_count = 0usize;
     for (i, photo) in photos_to_index.iter().enumerate() {
-        match index_photo(&settings.api_key, photo, photos, vectors, index, embeddings).await {
+        match index_photo(&api_key, photo, photos, vectors, index, embeddings).await {
             Ok(()) => {
                 indexed_count += 1;
                 tracing::info!("Indexed {}/{}: {}", i + 1, total, photo.file_name);
@@ -298,8 +298,8 @@ async fn embedding_unavailable(
     settings: &impl SettingsRepository,
     embeddings: &impl EmbeddingService,
 ) -> Result<bool> {
-    let settings = settings.get().await?;
-    Ok(!embeddings.has_local_model() && settings.api_key.is_empty())
+    let api_key = crate::application::scoring::resolve_api_key_from_settings(settings).await?;
+    Ok(!embeddings.has_local_model() && api_key.is_empty())
 }
 
 fn require_embedding_service(api_key: &str, embeddings: &impl EmbeddingService) -> Result<()> {
