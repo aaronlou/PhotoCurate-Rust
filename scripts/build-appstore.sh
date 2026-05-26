@@ -121,21 +121,66 @@ npm run tauri-build -- --bundles app
 
 APP_PATH="src-tauri/target/release/bundle/macos/PhotoCurate.app"
 PROFILE_PATH="$HOME/Library/MobileDevice/Provisioning Profiles/com.photocurate.provisionprofile"
+PROFILE_PLIST="src-tauri/target/release/bundle/macos/profile.plist"
+APPSTORE_ENTITLEMENTS="src-tauri/target/release/bundle/macos/AppStoreEntitlements.plist"
 
 # --- Embed provisioning profile ---
 echo -e "\n${YELLOW}Embedding provisioning profile...${NC}"
 if [ -f "$PROFILE_PATH" ]; then
     cp "$PROFILE_PATH" "$APP_PATH/Contents/embedded.provisionprofile"
+    xattr -cr "$APP_PATH/Contents/embedded.provisionprofile" 2>/dev/null || true
     echo -e "  ${GREEN}Provisioning profile embedded${NC}"
 else
     echo -e "  ${RED}Provisioning profile not found at $PROFILE_PATH${NC}"
     exit 1
 fi
 
+echo -e "\n${YELLOW}Generating App Store entitlements...${NC}"
+openssl cms -verify -inform DER -in "$PROFILE_PATH" -noverify -out "$PROFILE_PLIST" >/dev/null 2>&1
+APP_IDENTIFIER=$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.application-identifier" "$PROFILE_PLIST")
+TEAM_IDENTIFIER=$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.developer.team-identifier" "$PROFILE_PLIST")
+KEYCHAIN_GROUP=$(/usr/libexec/PlistBuddy -c "Print :Entitlements:keychain-access-groups:0" "$PROFILE_PLIST")
+
+cat > "$APPSTORE_ENTITLEMENTS" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.application-identifier</key>
+    <string>$APP_IDENTIFIER</string>
+    <key>com.apple.developer.team-identifier</key>
+    <string>$TEAM_IDENTIFIER</string>
+    <key>keychain-access-groups</key>
+    <array>
+        <string>$KEYCHAIN_GROUP</string>
+    </array>
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+    <key>com.apple.security.files.bookmarks.app-scope</key>
+    <true/>
+    <key>com.apple.security.network.client</key>
+    <true/>
+</dict>
+</plist>
+EOF
+plutil -lint "$APPSTORE_ENTITLEMENTS" >/dev/null
+echo -e "  ${GREEN}Entitlements generated for:${NC} $APP_IDENTIFIER"
+
+# --- Remove browser/download quarantine attributes before signing ---
+echo -e "\n${YELLOW}Removing extended attributes...${NC}"
+xattr -cr "$APP_PATH" 2>/dev/null || true
+if xattr -lr "$APP_PATH" 2>/dev/null | grep -q "com.apple.quarantine"; then
+    echo -e "${RED}Quarantine attribute still present in app bundle.${NC}"
+    exit 1
+fi
+echo -e "  ${GREEN}Extended attributes cleaned${NC}"
+
 # --- Re-sign after embedding profile ---
 echo -e "\n${YELLOW}Re-signing with embedded provisioning profile...${NC}"
 codesign --sign "$APPLE_SIGNING_IDENTITY" \
-    --entitlements src-tauri/Entitlements.plist \
+    --entitlements "$APPSTORE_ENTITLEMENTS" \
     --options runtime \
     --deep \
     --force \
@@ -146,8 +191,9 @@ echo -e "  ${GREEN}Re-signed${NC}"
 echo -e "\n${YELLOW}Verifying signed .app...${NC}"
 codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 codesign --display --entitlements :- "$APP_PATH" | grep -q "com.apple.security.app-sandbox"
+codesign --display --entitlements :- "$APP_PATH" | grep -q "com.apple.application-identifier"
 test -f "$APP_PATH/Contents/Resources/PrivacyInfo.xcprivacy"
-echo -e "  ${GREEN}.app signature, sandbox entitlement, and privacy manifest verified${NC}"
+echo -e "  ${GREEN}.app signature, App Store entitlements, sandbox, and privacy manifest verified${NC}"
 
 # --- Build .pkg ---
 echo -e "\n${YELLOW}Building .pkg for App Store submission...${NC}"
