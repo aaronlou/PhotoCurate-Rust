@@ -337,7 +337,7 @@ def export_image_encoder():
     dummy_input = torch.randn(1, 3, IMAGE_SIZE, IMAGE_SIZE)
     output_path = OUTPUT_DIR / "chinese_clip_image.onnx"
 
-    torch.onnx.export(model, dummy_input, str(output_path),
+    torch.onnx.export(model, (dummy_input,), str(output_path),
         input_names=["pixel_values"], output_names=["image_embeds"],
         dynamic_axes={"pixel_values": {0: "batch_size"}, "image_embeds": {0: "batch_size"}},
         opset_version=18, external_data=False, do_constant_folding=True)

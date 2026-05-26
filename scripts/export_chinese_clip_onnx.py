@@ -153,7 +153,7 @@ def main():
     img_encoder = ImageEncoder(model.vision_model, model.visual_projection).eval()
     torch.onnx.export(
         img_encoder,
-        torch.randn(1, 3, 224, 224),
+        (torch.randn(1, 3, 224, 224),),
         str(img_path),
         input_names=["pixel_values"],
         output_names=["image_embeds"],
