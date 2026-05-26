@@ -20,6 +20,28 @@ pub fn create_index() -> SharedVectorIndex {
     Arc::new(RwLock::new(VectorIndex::default()))
 }
 
+impl crate::application::ports::VectorIndexStore for SharedVectorIndex {
+    async fn add(&self, photo_id: String, vector: Vec<f64>) {
+        let mut index = self.write().await;
+        index.add(photo_id, vector);
+    }
+
+    async fn clear(&self) {
+        let mut index = self.write().await;
+        index.clear();
+    }
+
+    async fn search(&self, query: &[f64], top_k: usize, min_similarity: f64) -> Vec<(String, f64)> {
+        let index = self.read().await;
+        index.search(query, top_k, min_similarity)
+    }
+
+    async fn stats(&self) -> (usize, Option<usize>) {
+        let index = self.read().await;
+        index.stats()
+    }
+}
+
 impl VectorIndex {
     pub fn add(&mut self, photo_id: String, vector: Vec<f64>) {
         self.entries.insert(photo_id, vector);
@@ -33,12 +55,7 @@ impl VectorIndex {
         self.entries.clear();
     }
 
-    pub fn search(
-        &self,
-        query: &[f64],
-        top_k: usize,
-        min_similarity: f64,
-    ) -> Vec<(String, f64)> {
+    pub fn search(&self, query: &[f64], top_k: usize, min_similarity: f64) -> Vec<(String, f64)> {
         if self.entries.is_empty() {
             return vec![];
         }

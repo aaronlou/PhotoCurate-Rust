@@ -94,8 +94,8 @@ pub fn resolve_bookmark(data: &[u8]) -> Result<String, String> {
             return Err("Bookmark resolution returned nil URL".to_string());
         }
 
-        let retained_url = Retained::from_raw(url)
-            .ok_or_else(|| "Failed to retain resolved NSURL".to_string())?;
+        let retained_url =
+            Retained::from_raw(url).ok_or_else(|| "Failed to retain resolved NSURL".to_string())?;
 
         // Start security-scoped access — required before any file I/O on this resource
         let started: bool = msg_send![&retained_url, startAccessingSecurityScopedResource];

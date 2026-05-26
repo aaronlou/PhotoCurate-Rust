@@ -1,10 +1,17 @@
-use crate::domain::models::{IndexingProgressEvent, SearchResult};
+use crate::application::ports::{
+    EmbeddingService, PhotoRepository, ProgressReporter, SettingsRepository, VectorIndexStore,
+    VectorRepository,
+};
+use crate::domain::models::{IndexingProgressEvent, Photo, SearchResult};
 use crate::error::{PhotoCurateError, Result};
 use crate::infrastructure;
 use crate::infrastructure::vector::SharedVectorIndex;
 use sqlx::{Pool, Sqlite};
 use std::sync::Arc;
-use tauri::Emitter;
+
+const EMBEDDING_VERSION: i32 = 1;
+const SEARCH_LIMIT: usize = 50;
+const SEARCH_MIN_SIMILARITY: f64 = 0.2;
 
 pub async fn build_index(
     db: &Pool<Sqlite>,
@@ -13,47 +20,45 @@ pub async fn build_index(
     photo_ids: Vec<String>,
 ) -> Result<()> {
     let settings_repo = infrastructure::repositories::SqliteSettingsRepository::new(db.clone());
-    let settings = settings_repo.get().await?;
-    let local = chinese_clip.as_ref().map(Arc::clone);
-
-    if local.is_none() && settings.api_key.is_empty() {
-        return Err(PhotoCurateError::EmbeddingServiceMissing);
-    }
-
     let photo_repo = infrastructure::repositories::SqlitePhotoRepository::new(db.clone());
     let vector_repo = infrastructure::repositories::SqliteVectorRepository::new(db.clone());
+    let embeddings = infrastructure::adapters::AiGateway::new(chinese_clip.clone());
+    let progress = crate::application::ports::NoopProgressReporter;
 
-    for photo_id in photo_ids {
-        let photo = photo_repo.find_by_id(&photo_id).await?;
-        if let Some(photo) = photo {
-            match infrastructure::ai::embed_image(
-                &settings.api_key,
-                &photo.file_path,
-                local.clone(),
-            )
-            .await
-            {
-                Ok(embedding) => {
-                    let vector_json = serde_json::to_string(&embedding)
-                        .map_err(|e| PhotoCurateError::InvalidData(e.to_string()))?;
-                    vector_repo
-                        .save(&uuid::Uuid::new_v4().to_string(), &photo_id, &vector_json)
-                        .await?;
+    build_index_with(
+        &settings_repo,
+        &photo_repo,
+        &vector_repo,
+        vector_index,
+        &embeddings,
+        &progress,
+        photo_ids,
+    )
+    .await
+}
 
-                    photo_repo.update_embedding(&photo_id, 1).await?;
-
-                    let mut index = vector_index.write().await;
-                    index.add(photo_id, embedding);
-
-                    tracing::info!("Indexed {}", photo.file_name);
-                }
-                Err(e) => {
-                    tracing::warn!("Embedding failed for {}: {}", photo.file_name, e);
-                }
-            }
-        }
-    }
-    Ok(())
+pub async fn build_index_with(
+    settings: &impl SettingsRepository,
+    photos: &impl PhotoRepository,
+    vectors: &impl VectorRepository,
+    index: &impl VectorIndexStore,
+    embeddings: &impl EmbeddingService,
+    progress: &impl ProgressReporter,
+    photo_ids: Vec<String>,
+) -> Result<()> {
+    let selected_photos = find_photos_by_ids(photos, photo_ids).await?;
+    index_photos(
+        settings,
+        photos,
+        vectors,
+        index,
+        embeddings,
+        progress,
+        selected_photos,
+        false,
+    )
+    .await
+    .map(|_| ())
 }
 
 pub async fn auto_index_unindexed(
@@ -63,94 +68,45 @@ pub async fn auto_index_unindexed(
     app_handle: &tauri::AppHandle,
 ) -> Result<()> {
     let settings_repo = infrastructure::repositories::SqliteSettingsRepository::new(db.clone());
-    let settings = settings_repo.get().await?;
-    let local = chinese_clip.as_ref().map(Arc::clone);
-
-    if local.is_none() && settings.api_key.is_empty() {
-        let _ = app_handle.emit(
-            "indexing-progress",
-            IndexingProgressEvent {
-                current: 0,
-                total: 0,
-                status: "unavailable".into(),
-            },
-        );
-        return Ok(());
-    }
-
     let photo_repo = infrastructure::repositories::SqlitePhotoRepository::new(db.clone());
     let vector_repo = infrastructure::repositories::SqliteVectorRepository::new(db.clone());
+    let embeddings = infrastructure::adapters::AiGateway::new(chinese_clip.clone());
+    let progress = infrastructure::adapters::TauriProgressReporter::new(app_handle.clone());
 
-    let unindexed = photo_repo.find_unindexed().await?;
-    let total = unindexed.len();
+    auto_index_unindexed_with(
+        &settings_repo,
+        &photo_repo,
+        &vector_repo,
+        vector_index,
+        &embeddings,
+        &progress,
+    )
+    .await
+}
 
-    if total == 0 {
-        let _ = app_handle.emit(
-            "indexing-progress",
-            IndexingProgressEvent {
-                current: 0,
-                total: 0,
-                status: "complete".into(),
-            },
-        );
+pub async fn auto_index_unindexed_with(
+    settings: &impl SettingsRepository,
+    photos: &impl PhotoRepository,
+    vectors: &impl VectorRepository,
+    index: &impl VectorIndexStore,
+    embeddings: &impl EmbeddingService,
+    progress: &impl ProgressReporter,
+) -> Result<()> {
+    if embedding_unavailable(settings, embeddings).await? {
+        progress.indexing_progress(IndexingProgressEvent {
+            current: 0,
+            total: 0,
+            status: "unavailable".into(),
+        });
         return Ok(());
     }
 
-    tracing::info!("Auto-indexing {} unindexed photos", total);
-
-    let _ = app_handle.emit(
-        "indexing-progress",
-        IndexingProgressEvent {
-            current: 0,
-            total,
-            status: "started".into(),
-        },
-    );
-
-    for (i, photo) in unindexed.iter().enumerate() {
-        match infrastructure::ai::embed_image(&settings.api_key, &photo.file_path, local.clone())
-            .await
-        {
-            Ok(embedding) => {
-                let vector_json = serde_json::to_string(&embedding).unwrap_or_default();
-                let _ = vector_repo
-                    .save(&uuid::Uuid::new_v4().to_string(), &photo.id, &vector_json)
-                    .await;
-
-                let _ = photo_repo.update_embedding(&photo.id, 1).await;
-
-                let mut index = vector_index.write().await;
-                index.add(photo.id.clone(), embedding);
-
-                tracing::info!("Indexed {}/{}: {}", i + 1, total, photo.file_name);
-            }
-            Err(e) => {
-                tracing::warn!("Embedding failed for {}: {}", photo.file_name, e);
-            }
-        }
-
-        let current = i + 1;
-        let _ = app_handle.emit(
-            "indexing-progress",
-            IndexingProgressEvent {
-                current,
-                total,
-                status: "indexing".into(),
-            },
-        );
-    }
-
-    let _ = app_handle.emit(
-        "indexing-progress",
-        IndexingProgressEvent {
-            current: total,
-            total,
-            status: "complete".into(),
-        },
-    );
-
-    tracing::info!("Auto-indexing complete: {} photos", total);
-    Ok(())
+    let unindexed = photos.find_unindexed().await?;
+    index_photos(
+        settings, photos, vectors, index, embeddings, progress, unindexed, true,
+    )
+    .await
+    .map(|_| ())
 }
 
 pub async fn rebuild_all_index(
@@ -159,78 +115,44 @@ pub async fn rebuild_all_index(
     chinese_clip: &Option<Arc<infrastructure::ai::ChineseClipService>>,
     app_handle: &tauri::AppHandle,
 ) -> Result<usize> {
-    // 1. Clear memory index
-    {
-        let mut index = vector_index.write().await;
-        index.clear();
-    }
-
-    // 2. Clear database vectors and reset photo embedding flags
-    let vector_repo = infrastructure::repositories::SqliteVectorRepository::new(db.clone());
-    vector_repo.delete_all().await?;
-
+    let settings_repo = infrastructure::repositories::SqliteSettingsRepository::new(db.clone());
     let photo_repo = infrastructure::repositories::SqlitePhotoRepository::new(db.clone());
-    photo_repo.reset_all_embeddings().await?;
+    let vector_repo = infrastructure::repositories::SqliteVectorRepository::new(db.clone());
+    let embeddings = infrastructure::adapters::AiGateway::new(chinese_clip.clone());
+    let progress = infrastructure::adapters::TauriProgressReporter::new(app_handle.clone());
 
-    // 3. Re-index all photos using the currently available model
-    let all_photos = photo_repo.find_all(None).await?;
+    rebuild_all_index_with(
+        &settings_repo,
+        &photo_repo,
+        &vector_repo,
+        vector_index,
+        &embeddings,
+        &progress,
+    )
+    .await
+}
+
+pub async fn rebuild_all_index_with(
+    settings: &impl SettingsRepository,
+    photos: &impl PhotoRepository,
+    vectors: &impl VectorRepository,
+    index: &impl VectorIndexStore,
+    embeddings: &impl EmbeddingService,
+    progress: &impl ProgressReporter,
+) -> Result<usize> {
+    index.clear().await;
+    vectors.delete_all().await?;
+    photos.reset_all_embeddings().await?;
+
+    let all_photos = photos.find_all(None).await?;
     if all_photos.is_empty() {
         return Ok(0);
     }
 
-    let settings_repo = infrastructure::repositories::SqliteSettingsRepository::new(db.clone());
-    let settings = settings_repo.get().await?;
-    let local = chinese_clip.as_ref().map(Arc::clone);
-
-    if local.is_none() && settings.api_key.is_empty() {
-        return Err(PhotoCurateError::EmbeddingServiceMissing);
-    }
-
-    let mut indexed_count = 0usize;
-    let total = all_photos.len();
-
-    for (i, photo) in all_photos.iter().enumerate() {
-        match infrastructure::ai::embed_image(&settings.api_key, &photo.file_path, local.clone()).await {
-            Ok(embedding) => {
-                let vector_json = serde_json::to_string(&embedding)
-                    .map_err(|e| PhotoCurateError::InvalidData(e.to_string()))?;
-                vector_repo
-                    .save(&uuid::Uuid::new_v4().to_string(), &photo.id, &vector_json)
-                    .await?;
-
-                photo_repo.update_embedding(&photo.id, 1).await?;
-
-                let mut index = vector_index.write().await;
-                index.add(photo.id.clone(), embedding);
-
-                indexed_count += 1;
-                tracing::info!("Re-indexed {}/{}: {}", i + 1, total, photo.file_name);
-            }
-            Err(e) => {
-                tracing::warn!("Re-index failed for {}: {}", photo.file_name, e);
-            }
-        }
-
-        let _ = app_handle.emit(
-            "indexing-progress",
-            IndexingProgressEvent {
-                current: i + 1,
-                total,
-                status: "indexing".into(),
-            },
-        );
-    }
-
-    let _ = app_handle.emit(
-        "indexing-progress",
-        IndexingProgressEvent {
-            current: total,
-            total,
-            status: "complete".into(),
-        },
-    );
-
-    Ok(indexed_count)
+    index_photos(
+        settings, photos, vectors, index, embeddings, progress, all_photos, true,
+    )
+    .await
 }
 
 pub async fn natural_language_search(
@@ -240,28 +162,149 @@ pub async fn natural_language_search(
     query: String,
 ) -> Result<Vec<SearchResult>> {
     let settings_repo = infrastructure::repositories::SqliteSettingsRepository::new(db.clone());
-    let settings = settings_repo.get().await?;
-    let local = chinese_clip.as_ref().map(Arc::clone);
-
-    if local.is_none() && settings.api_key.is_empty() {
-        return Err(PhotoCurateError::EmbeddingServiceMissing);
-    }
-
-    let query_embedding = infrastructure::ai::embed_text(&settings.api_key, &query, local).await?;
-
-    let index = vector_index.read().await;
-    // Use min_similarity=0.0 to return all candidates; frontend decides grouping
-    let results = index.search(&query_embedding, 50, 0.2);
-    drop(index);
-
     let photo_repo = infrastructure::repositories::SqlitePhotoRepository::new(db.clone());
+    let embeddings = infrastructure::adapters::AiGateway::new(chinese_clip.clone());
+
+    natural_language_search_with(
+        &settings_repo,
+        &photo_repo,
+        vector_index,
+        &embeddings,
+        query,
+    )
+    .await
+}
+
+pub async fn natural_language_search_with(
+    settings: &impl SettingsRepository,
+    photos: &impl PhotoRepository,
+    index: &impl VectorIndexStore,
+    embeddings: &impl EmbeddingService,
+    query: String,
+) -> Result<Vec<SearchResult>> {
+    let settings = settings.get().await?;
+    require_embedding_service(&settings.api_key, embeddings)?;
+
+    let query_embedding = embeddings.embed_text(&settings.api_key, &query).await?;
+    let matches = index
+        .search(&query_embedding, SEARCH_LIMIT, SEARCH_MIN_SIMILARITY)
+        .await;
+
     let mut search_results = Vec::new();
-    for (photo_id, similarity) in results {
-        let photo = photo_repo.find_by_id(&photo_id).await?;
-        if let Some(photo) = photo {
+    for (photo_id, similarity) in matches {
+        if let Some(photo) = photos.find_by_id(&photo_id).await? {
             search_results.push(SearchResult { photo, similarity });
         }
     }
 
     Ok(search_results)
+}
+
+async fn find_photos_by_ids(
+    photos: &impl PhotoRepository,
+    photo_ids: Vec<String>,
+) -> Result<Vec<Photo>> {
+    let mut selected = Vec::new();
+    for photo_id in photo_ids {
+        if let Some(photo) = photos.find_by_id(&photo_id).await? {
+            selected.push(photo);
+        }
+    }
+    Ok(selected)
+}
+
+async fn index_photos(
+    settings_repo: &impl SettingsRepository,
+    photos: &impl PhotoRepository,
+    vectors: &impl VectorRepository,
+    index: &impl VectorIndexStore,
+    embeddings: &impl EmbeddingService,
+    progress: &impl ProgressReporter,
+    photos_to_index: Vec<Photo>,
+    emit_progress: bool,
+) -> Result<usize> {
+    let settings = settings_repo.get().await?;
+    require_embedding_service(&settings.api_key, embeddings)?;
+
+    let total = photos_to_index.len();
+    if emit_progress {
+        progress.indexing_progress(IndexingProgressEvent {
+            current: 0,
+            total,
+            status: if total == 0 { "complete" } else { "started" }.into(),
+        });
+    }
+
+    if total == 0 {
+        return Ok(0);
+    }
+
+    let mut indexed_count = 0usize;
+    for (i, photo) in photos_to_index.iter().enumerate() {
+        match index_photo(&settings.api_key, photo, photos, vectors, index, embeddings).await {
+            Ok(()) => {
+                indexed_count += 1;
+                tracing::info!("Indexed {}/{}: {}", i + 1, total, photo.file_name);
+            }
+            Err(e) => {
+                tracing::warn!("Embedding failed for {}: {}", photo.file_name, e);
+            }
+        }
+
+        if emit_progress {
+            progress.indexing_progress(IndexingProgressEvent {
+                current: i + 1,
+                total,
+                status: "indexing".into(),
+            });
+        }
+    }
+
+    if emit_progress {
+        progress.indexing_progress(IndexingProgressEvent {
+            current: total,
+            total,
+            status: "complete".into(),
+        });
+    }
+
+    Ok(indexed_count)
+}
+
+async fn index_photo(
+    api_key: &str,
+    photo: &Photo,
+    photos: &impl PhotoRepository,
+    vectors: &impl VectorRepository,
+    index: &impl VectorIndexStore,
+    embeddings: &impl EmbeddingService,
+) -> Result<()> {
+    let embedding = embeddings.embed_image(api_key, &photo.file_path).await?;
+    let vector_json = serde_json::to_string(&embedding)
+        .map_err(|e| PhotoCurateError::InvalidData(e.to_string()))?;
+
+    vectors
+        .save(&uuid::Uuid::new_v4().to_string(), &photo.id, &vector_json)
+        .await?;
+    photos
+        .update_embedding(&photo.id, EMBEDDING_VERSION)
+        .await?;
+    index.add(photo.id.clone(), embedding).await;
+
+    Ok(())
+}
+
+async fn embedding_unavailable(
+    settings: &impl SettingsRepository,
+    embeddings: &impl EmbeddingService,
+) -> Result<bool> {
+    let settings = settings.get().await?;
+    Ok(!embeddings.has_local_model() && settings.api_key.is_empty())
+}
+
+fn require_embedding_service(api_key: &str, embeddings: &impl EmbeddingService) -> Result<()> {
+    if !embeddings.has_local_model() && api_key.is_empty() {
+        return Err(PhotoCurateError::EmbeddingServiceMissing);
+    }
+    Ok(())
 }

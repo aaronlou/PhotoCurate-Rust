@@ -1,8 +1,10 @@
+use crate::application::ports::{
+    PhotoRepository, ProgressReporter, ScoringService, SettingsRepository,
+};
 use crate::domain::models::{AiSettings, IndexingProgressEvent};
 use crate::error::{PhotoCurateError, Result};
 use crate::infrastructure;
 use sqlx::{Pool, Sqlite};
-use tauri::Emitter;
 
 pub async fn score_photos(
     db: &Pool<Sqlite>,
@@ -10,21 +12,37 @@ pub async fn score_photos(
     app_handle: &tauri::AppHandle,
 ) -> Result<()> {
     let settings_repo = infrastructure::repositories::SqliteSettingsRepository::new(db.clone());
-    let settings = settings_repo.get().await?;
+    let photo_repo = infrastructure::repositories::SqlitePhotoRepository::new(db.clone());
+    let ai = infrastructure::adapters::AiGateway::new(None);
+    let progress = infrastructure::adapters::TauriProgressReporter::new(app_handle.clone());
+
+    score_photos_with(&settings_repo, &photo_repo, &ai, &progress, photo_ids).await
+}
+
+pub async fn score_photos_with(
+    settings: &impl SettingsRepository,
+    photos: &impl PhotoRepository,
+    scorer: &impl ScoringService,
+    progress: &impl ProgressReporter,
+    photo_ids: Vec<String>,
+) -> Result<()> {
+    let settings = settings.get().await?;
 
     if settings.api_key.is_empty() {
         return Err(PhotoCurateError::ApiKeyMissing);
     }
 
-    let photo_repo = infrastructure::repositories::SqlitePhotoRepository::new(db.clone());
     let total = photo_ids.len();
 
     for (i, photo_id) in photo_ids.iter().enumerate() {
-        let photo = photo_repo.find_by_id(photo_id).await?;
+        let photo = photos.find_by_id(photo_id).await?;
         if let Some(photo) = photo {
-            match infrastructure::ai::score_image(&settings.api_key, &photo.file_path).await {
+            match scorer
+                .score_image(&settings.api_key, &photo.file_path)
+                .await
+            {
                 Ok(result) => {
-                    photo_repo.update_score(photo_id, result.score).await?;
+                    photos.update_score(photo_id, result.score).await?;
                     tracing::info!("Scored {} = {}", photo.file_name, result.score);
                 }
                 Err(e) => {
@@ -33,61 +51,57 @@ pub async fn score_photos(
             }
         }
 
-        let _ = app_handle.emit(
-            "scoring-progress",
-            IndexingProgressEvent {
-                current: i + 1,
-                total,
-                status: "indexing".into(),
-            },
-        );
+        progress.scoring_progress(IndexingProgressEvent {
+            current: i + 1,
+            total,
+            status: "indexing".into(),
+        });
     }
 
-    let _ = app_handle.emit(
-        "scoring-progress",
-        IndexingProgressEvent {
-            current: total,
-            total,
-            status: "complete".into(),
-        },
-    );
+    progress.scoring_progress(IndexingProgressEvent {
+        current: total,
+        total,
+        status: "complete".into(),
+    });
 
     Ok(())
 }
 
 pub async fn get_ai_settings(db: &Pool<Sqlite>) -> Result<AiSettings> {
     let settings_repo = infrastructure::repositories::SqliteSettingsRepository::new(db.clone());
-    settings_repo.get().await
+    get_ai_settings_with(&settings_repo).await
+}
+
+pub async fn get_ai_settings_with(settings: &impl SettingsRepository) -> Result<AiSettings> {
+    settings.get().await
 }
 
 pub async fn update_ai_settings(
     db: &Pool<Sqlite>,
     settings: serde_json::Value,
 ) -> Result<AiSettings> {
-    let provider = settings["provider"].as_str().unwrap_or("gemini");
+    let provider = "gemini";
     let api_key = settings["api_key"].as_str().unwrap_or("");
-    let ollama_base_url = settings["ollama_base_url"]
-        .as_str()
-        .unwrap_or("http://localhost:11434");
-    let ollama_embed_model = settings["ollama_embed_model"]
-        .as_str()
-        .unwrap_or("nomic-embed-text");
-    let ollama_vision_model = settings["ollama_vision_model"]
-        .as_str()
-        .unwrap_or("llava");
 
     let new_settings = AiSettings {
         id: "default".to_string(),
         provider: provider.to_string(),
         api_key: api_key.to_string(),
-        ollama_base_url: ollama_base_url.to_string(),
-        ollama_embed_model: ollama_embed_model.to_string(),
-        ollama_vision_model: ollama_vision_model.to_string(),
+        ollama_base_url: String::new(),
+        ollama_embed_model: String::new(),
+        ollama_vision_model: String::new(),
     };
 
     let settings_repo = infrastructure::repositories::SqliteSettingsRepository::new(db.clone());
-    settings_repo.update(&new_settings).await?;
-    settings_repo.get().await
+    update_ai_settings_with(&settings_repo, new_settings).await
+}
+
+pub async fn update_ai_settings_with(
+    settings: &impl SettingsRepository,
+    new_settings: AiSettings,
+) -> Result<AiSettings> {
+    settings.update(&new_settings).await?;
+    settings.get().await
 }
 
 #[derive(serde::Serialize)]
@@ -97,7 +111,15 @@ pub struct ValidateKeyResult {
 }
 
 pub async fn validate_api_key(api_key: &str) -> Result<ValidateKeyResult> {
-    let (valid, msg) = infrastructure::ai::validate_api_key(api_key).await?;
+    let ai = infrastructure::adapters::AiGateway::new(None);
+    validate_api_key_with(&ai, api_key).await
+}
+
+pub async fn validate_api_key_with(
+    scorer: &impl ScoringService,
+    api_key: &str,
+) -> Result<ValidateKeyResult> {
+    let (valid, msg) = scorer.validate_api_key(api_key).await?;
     Ok(ValidateKeyResult {
         valid,
         message: msg,

@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Directory {
     pub id: String,
     pub path: String,
@@ -22,7 +22,7 @@ impl Directory {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Photo {
     pub id: String,
     pub file_path: String,
@@ -52,10 +52,7 @@ pub struct Photo {
 
 impl Photo {
     pub fn extension(&self) -> Option<String> {
-        self.file_path
-            .rsplit('.')
-            .next()
-            .map(|s| s.to_lowercase())
+        self.file_path.rsplit('.').next().map(|s| s.to_lowercase())
     }
 
     pub fn is_raw(&self) -> bool {
@@ -66,7 +63,7 @@ impl Photo {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiSettings {
     pub id: String,
     pub provider: String,

@@ -139,7 +139,8 @@ pub fn read_exif(path: &str) -> ExifData {
                 if let exif::Value::Ascii(ref v) = field.value {
                     if let Some(s) = v.first() {
                         let s = std::str::from_utf8(s).unwrap_or("");
-                        data.date_taken = NaiveDateTime::parse_from_str(s, "%Y:%m:%d %H:%M:%S").ok();
+                        data.date_taken =
+                            NaiveDateTime::parse_from_str(s, "%Y:%m:%d %H:%M:%S").ok();
                     }
                 }
             }
@@ -200,7 +201,9 @@ pub async fn generate_thumbnail(
             &max_dimension.to_string(),
             photo_path,
             "--out",
-            thumb_path.to_str().ok_or_else(|| PhotoCurateError::InvalidData("invalid path".into()))?,
+            thumb_path
+                .to_str()
+                .ok_or_else(|| PhotoCurateError::InvalidData("invalid path".into()))?,
         ])
         .output()
         .map_err(|e| PhotoCurateError::Other(format!("failed to run sips: {}", e)))?;
@@ -217,8 +220,7 @@ async fn generate_thumbnail_rust(
     thumb_path: &Path,
     max_dimension: u32,
 ) -> Result<()> {
-    let img = image::open(photo_path)
-        .map_err(|e| PhotoCurateError::Image(e.to_string()))?;
+    let img = image::open(photo_path).map_err(|e| PhotoCurateError::Image(e.to_string()))?;
     let thumb = img.resize(
         max_dimension,
         max_dimension,

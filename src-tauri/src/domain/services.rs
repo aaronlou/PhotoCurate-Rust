@@ -7,14 +7,8 @@ pub fn resolve_conflict(path: &Path) -> PathBuf {
     }
 
     let parent = path.parent().unwrap_or(Path::new("."));
-    let stem = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("file");
-    let ext = path
-        .extension()
-        .and_then(|s| s.to_str())
-        .unwrap_or("");
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
+    let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
 
     let mut counter = 1;
     loop {

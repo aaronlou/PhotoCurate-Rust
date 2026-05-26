@@ -102,13 +102,12 @@ async fn test_export_photos_flat() {
     assert!(PathBuf::from(&dest_dir).join("photo2.jpg").exists());
 
     // Verify export status in DB
-    let photo1: (bool, Option<String>) = sqlx::query_as(
-        "SELECT has_been_exported, export_date FROM photos WHERE id = ?1"
-    )
-    .bind(&photo1_id)
-    .fetch_one(&state.db)
-    .await
-    .unwrap();
+    let photo1: (bool, Option<String>) =
+        sqlx::query_as("SELECT has_been_exported, export_date FROM photos WHERE id = ?1")
+            .bind(&photo1_id)
+            .fetch_one(&state.db)
+            .await
+            .unwrap();
     assert!(photo1.0);
     assert!(photo1.1.is_some());
 }
@@ -164,7 +163,12 @@ async fn test_export_photos_with_conflict() {
     .unwrap();
 
     // Export flat — should auto-rename second file
-    let dest_dir = _temp.path().join("export_conflict").to_str().unwrap().to_string();
+    let dest_dir = _temp
+        .path()
+        .join("export_conflict")
+        .to_str()
+        .unwrap()
+        .to_string();
     let result = export_photos(
         &state.db,
         vec![photo1_id, photo2_id],
@@ -209,15 +213,15 @@ async fn test_export_photos_missing_file() {
     .await
     .unwrap();
 
-    let dest_dir = _temp.path().join("export_missing").to_str().unwrap().to_string();
-    let result = export_photos(
-        &state.db,
-        vec![photo_id],
-        dest_dir,
-        Some(false),
-    )
-    .await
-    .unwrap();
+    let dest_dir = _temp
+        .path()
+        .join("export_missing")
+        .to_str()
+        .unwrap()
+        .to_string();
+    let result = export_photos(&state.db, vec![photo_id], dest_dir, Some(false))
+        .await
+        .unwrap();
 
     assert_eq!(result.exported_count, 0);
     assert_eq!(result.failed_count, 1);
@@ -257,7 +261,12 @@ async fn test_export_photos_preserve_structure() {
     .await
     .unwrap();
 
-    let dest_dir = _temp.path().join("export_struct").to_str().unwrap().to_string();
+    let dest_dir = _temp
+        .path()
+        .join("export_struct")
+        .to_str()
+        .unwrap()
+        .to_string();
     let result = export_photos(
         &state.db,
         vec![photo_id],
@@ -270,6 +279,13 @@ async fn test_export_photos_preserve_structure() {
     assert_eq!(result.exported_count, 1);
     assert_eq!(result.failed_count, 0);
 
-    let expected_path = PathBuf::from(&dest_dir).join("2025").join("May").join("trip.jpg");
-    assert!(expected_path.exists(), "Expected file at {:?}", expected_path);
+    let expected_path = PathBuf::from(&dest_dir)
+        .join("2025")
+        .join("May")
+        .join("trip.jpg");
+    assert!(
+        expected_path.exists(),
+        "Expected file at {:?}",
+        expected_path
+    );
 }

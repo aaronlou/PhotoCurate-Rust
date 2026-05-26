@@ -1,5 +1,5 @@
+use crate::application::ports::{DirectoryRepository, PhotoFileGateway, PhotoRepository};
 use crate::domain::models::{ExportFailure, ExportResult};
-use crate::domain::services::resolve_conflict;
 use crate::error::Result;
 use crate::infrastructure;
 use sqlx::{Pool, Sqlite};
@@ -12,8 +12,31 @@ pub async fn export_photos(
     destination: String,
     preserve_structure: Option<bool>,
 ) -> Result<ExportResult> {
+    let photo_repo = infrastructure::repositories::SqlitePhotoRepository::new(db.clone());
+    let dir_repo = infrastructure::repositories::SqliteDirectoryRepository::new(db.clone());
+    let file_gateway = infrastructure::adapters::LocalPhotoFileGateway;
+
+    export_photos_with(
+        &photo_repo,
+        &dir_repo,
+        &file_gateway,
+        photo_ids,
+        destination,
+        preserve_structure,
+    )
+    .await
+}
+
+pub async fn export_photos_with(
+    photos: &impl PhotoRepository,
+    directories: &impl DirectoryRepository,
+    files: &impl PhotoFileGateway,
+    photo_ids: Vec<String>,
+    destination: String,
+    preserve_structure: Option<bool>,
+) -> Result<ExportResult> {
     let dest = PathBuf::from(&destination);
-    std::fs::create_dir_all(&dest)?;
+    files.create_dir_all(&dest)?;
     let preserve = preserve_structure.unwrap_or(false);
 
     let unique_ids: Vec<String> = photo_ids
@@ -26,8 +49,7 @@ pub async fn export_photos(
         return Ok(ExportResult::empty());
     }
 
-    let photo_repo = infrastructure::repositories::SqlitePhotoRepository::new(db.clone());
-    let photos_to_export = photo_repo.find_by_ids(&unique_ids).await?;
+    let photos_to_export = photos.find_by_ids(&unique_ids).await?;
 
     let mut dir_map: HashMap<String, PathBuf> = HashMap::new();
     if preserve {
@@ -39,9 +61,7 @@ pub async fn export_photos(
             .collect();
 
         if !dir_ids.is_empty() {
-            let dir_repo =
-                infrastructure::repositories::SqliteDirectoryRepository::new(db.clone());
-            let dirs = dir_repo.find_by_ids(&dir_ids).await?;
+            let dirs = directories.find_by_ids(&dir_ids).await?;
             for dir in dirs {
                 dir_map.insert(dir.id, PathBuf::from(dir.path));
             }
@@ -53,7 +73,7 @@ pub async fn export_photos(
 
     for photo in photos_to_export {
         let src = PathBuf::from(&photo.file_path);
-        if !src.exists() {
+        if !files.file_exists(&src) {
             failed_photos.push(ExportFailure {
                 id: photo.id.clone(),
                 file_name: photo.file_name.clone(),
@@ -71,7 +91,7 @@ pub async fn export_photos(
                         } else {
                             dest.clone()
                         };
-                        std::fs::create_dir_all(&target_dir)?;
+                        files.create_dir_all(&target_dir)?;
                         target_dir.join(&photo.file_name)
                     } else {
                         dest.join(&photo.file_name)
@@ -86,11 +106,11 @@ pub async fn export_photos(
             dest.join(&photo.file_name)
         };
 
-        let final_dest = resolve_conflict(&dest_file);
+        let final_dest = files.resolve_conflict(&dest_file);
 
-        match std::fs::copy(&src, &final_dest) {
+        match files.copy_file(&src, &final_dest) {
             Ok(_) => {
-                photo_repo.update_export_status(&photo.id).await?;
+                photos.update_export_status(&photo.id).await?;
                 exported_count += 1;
                 tracing::info!("Exported {} -> {:?}", photo.file_path, final_dest);
             }

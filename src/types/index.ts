@@ -35,11 +35,8 @@ export interface Directory {
 
 export interface AISettings {
   id: string;
-  provider: "gemini" | "ollama";
+  provider: "gemini";
   api_key: string;
-  ollama_base_url: string;
-  ollama_embed_model: string;
-  ollama_vision_model: string;
 }
 
 export interface ScoreResult {

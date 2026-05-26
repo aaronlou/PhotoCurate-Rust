@@ -115,6 +115,8 @@ src-tauri/src/
 | 语义搜索 | Chinese-CLIP (ONNX + CoreML) 或 Gemini Embedding |
 | 向量检索 | 内存 BruteForce + 余弦相似度 |
 
+后端应用层通过 ports trait 依赖仓储、文件系统、AI、进度上报等能力；SQLite、Tauri 事件、Gemini/Chinese-CLIP 等实现集中在 infrastructure/interface 适配层。这样用例代码不直接绑定具体数据库或 IPC 框架。
+
 ## 本地模型安装（可选）
 
 如果你希望搜索功能完全离线运行，可以安装本地 Chinese-CLIP 模型。**如果不安装，搜索会自动使用 Gemini API。**

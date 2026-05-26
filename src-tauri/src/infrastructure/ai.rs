@@ -238,7 +238,13 @@ async fn validate_api_key_internal(api_key: &str) -> anyhow::Result<(bool, Strin
 }
 
 fn mime_type_for_path(path: &str) -> &'static str {
-    match path.rsplit('.').next().unwrap_or("").to_lowercase().as_str() {
+    match path
+        .rsplit('.')
+        .next()
+        .unwrap_or("")
+        .to_lowercase()
+        .as_str()
+    {
         "jpg" | "jpeg" => "image/jpeg",
         "png" => "image/png",
         "heic" | "heif" => "image/heic",

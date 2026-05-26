@@ -1,36 +1,61 @@
+use crate::application::ports::{
+    BookmarkGateway, DirectoryMonitor, DirectoryRepository, PhotoFileGateway, PhotoRepository,
+};
 use crate::domain::models::Directory;
 use crate::error::Result;
 use crate::infrastructure;
 use sqlx::{Pool, Sqlite};
-use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Arc;
-use tokio::sync::Mutex;
 
 pub async fn add_directory(
     db: &Pool<Sqlite>,
     thumbnail_dir: &Path,
-    monitors: &Arc<Mutex<HashMap<String, (String, notify::RecommendedWatcher)>>>,
+    monitors: &crate::Monitors,
     path: String,
 ) -> Result<Directory> {
     let dir_repo = infrastructure::repositories::SqliteDirectoryRepository::new(db.clone());
+    let photo_repo = infrastructure::repositories::SqlitePhotoRepository::new(db.clone());
+    let file_gateway = infrastructure::adapters::LocalPhotoFileGateway;
+    let bookmark_gateway = infrastructure::adapters::BookmarkService;
+    let monitor = infrastructure::adapters::NotifyDirectoryMonitor::new(monitors.clone());
 
-    if let Some(existing) = dir_repo.find_by_path(&path).await? {
-        let _ = start_monitoring(monitors, &existing.path, &existing.id).await;
-        let _ = rescan_directory(db, thumbnail_dir, &existing.path, &existing.id).await;
+    add_directory_with(
+        &dir_repo,
+        &photo_repo,
+        &file_gateway,
+        &bookmark_gateway,
+        &monitor,
+        thumbnail_dir,
+        path,
+    )
+    .await
+}
+
+pub async fn add_directory_with(
+    directories: &impl DirectoryRepository,
+    photos: &impl PhotoRepository,
+    files: &impl PhotoFileGateway,
+    bookmarks: &impl BookmarkGateway,
+    monitor: &impl DirectoryMonitor,
+    thumbnail_dir: &Path,
+    path: String,
+) -> Result<Directory> {
+    if let Some(existing) = directories.find_by_path(&path).await? {
+        let _ = monitor.start_monitoring(&existing.path, &existing.id).await;
+        let _ = rescan_directory(photos, files, thumbnail_dir, &existing.path, &existing.id).await;
         return Ok(existing);
     }
 
     let id = uuid::Uuid::new_v4().to_string();
-    let bookmark_data = infrastructure::bookmarks::create_bookmark(&path).ok();
+    let bookmark_data = bookmarks.create_bookmark(&path);
     let directory = Directory::new(id.clone(), path.clone(), bookmark_data);
 
-    dir_repo.save(&directory).await?;
+    directories.save(&directory).await?;
 
-    if let Err(e) = start_monitoring(monitors, &path, &id).await {
+    if let Err(e) = monitor.start_monitoring(&path, &id).await {
         tracing::warn!("Failed to start monitoring {}: {}", path, e);
     }
-    let _ = rescan_directory(db, thumbnail_dir, &path, &id).await;
+    let _ = rescan_directory(photos, files, thumbnail_dir, &path, &id).await;
 
     Ok(directory)
 }
@@ -42,22 +67,30 @@ pub async fn get_directories(db: &Pool<Sqlite>) -> Result<Vec<Directory>> {
 
 pub async fn remove_directory(
     db: &Pool<Sqlite>,
-    monitors: &Arc<Mutex<HashMap<String, (String, notify::RecommendedWatcher)>>>,
+    monitors: &crate::Monitors,
     id: String,
 ) -> Result<()> {
     let dir_repo = infrastructure::repositories::SqliteDirectoryRepository::new(db.clone());
+    let bookmark_gateway = infrastructure::adapters::BookmarkService;
+    let monitor = infrastructure::adapters::NotifyDirectoryMonitor::new(monitors.clone());
 
+    remove_directory_with(&dir_repo, &bookmark_gateway, &monitor, id).await
+}
+
+pub async fn remove_directory_with(
+    directories: &impl DirectoryRepository,
+    bookmarks: &impl BookmarkGateway,
+    monitor: &impl DirectoryMonitor,
+    id: String,
+) -> Result<()> {
     // Release security-scoped access before deleting
-    if let Ok(Some(dir)) = dir_repo.find_by_id(&id).await {
-        infrastructure::bookmarks::release_access(&dir.path);
+    if let Ok(Some(dir)) = directories.find_by_id(&id).await {
+        bookmarks.release_access(&dir.path);
     }
 
-    dir_repo.delete(&id).await?;
+    directories.delete(&id).await?;
 
-    let mut mons = monitors.lock().await;
-    if let Some((_, watcher)) = mons.remove(&id) {
-        drop(watcher);
-    }
+    monitor.stop_monitoring(&id).await;
     Ok(())
 }
 
@@ -66,9 +99,18 @@ pub async fn remove_directory(
 /// (scanning, monitoring, etc.) to regain sandbox access.
 pub async fn resolve_bookmarks_on_startup(db: &Pool<Sqlite>) -> Result<()> {
     let dir_repo = infrastructure::repositories::SqliteDirectoryRepository::new(db.clone());
-    let directories = dir_repo.find_all().await?;
+    let bookmark_gateway = infrastructure::adapters::BookmarkService;
 
-    for dir in directories {
+    resolve_bookmarks_on_startup_with(&dir_repo, &bookmark_gateway).await
+}
+
+pub async fn resolve_bookmarks_on_startup_with(
+    directories: &impl DirectoryRepository,
+    bookmarks: &impl BookmarkGateway,
+) -> Result<()> {
+    let saved_directories = directories.find_all().await?;
+
+    for dir in saved_directories {
         let bookmark = match &dir.bookmark_data {
             Some(b) if !b.is_empty() => b,
             _ => {
@@ -80,7 +122,7 @@ pub async fn resolve_bookmarks_on_startup(db: &Pool<Sqlite>) -> Result<()> {
             }
         };
 
-        match infrastructure::bookmarks::resolve_bookmark(bookmark) {
+        match bookmarks.resolve_bookmark(bookmark) {
             Ok(resolved_path) => {
                 if resolved_path != dir.path {
                     tracing::info!(
@@ -90,18 +132,9 @@ pub async fn resolve_bookmarks_on_startup(db: &Pool<Sqlite>) -> Result<()> {
                     );
                     // Still store the updated path for future reference
                     // (the bookmark remains valid regardless)
-                    let _ = sqlx::query(
-                        "UPDATE directories SET path = ?1 WHERE id = ?2",
-                    )
-                    .bind(&resolved_path)
-                    .bind(&dir.id)
-                    .execute(db)
-                    .await;
+                    let _ = directories.update_path(&dir.id, &resolved_path).await;
                 } else {
-                    tracing::info!(
-                        "Resolved sandbox access for directory: '{}'",
-                        dir.path
-                    );
+                    tracing::info!("Resolved sandbox access for directory: '{}'", dir.path);
                 }
             }
             Err(e) => {
@@ -118,51 +151,30 @@ pub async fn resolve_bookmarks_on_startup(db: &Pool<Sqlite>) -> Result<()> {
     Ok(())
 }
 
-async fn start_monitoring(
-    monitors: &Arc<Mutex<HashMap<String, (String, notify::RecommendedWatcher)>>>,
-    path: &str,
-    dir_id: &str,
-) -> Result<()> {
-    use notify::{RecursiveMode, Watcher};
-    let path = path.to_string();
-    let dir_id = dir_id.to_string();
-    let mut watcher = notify::recommended_watcher(move |res| {
-        match res {
-            Ok(event) => tracing::debug!("FS event: {:?}", event),
-            Err(e) => tracing::error!("Watch error: {:?}", e),
-        }
-    })?;
-
-    watcher.watch(Path::new(&path), RecursiveMode::Recursive)?;
-
-    let mut mons = monitors.lock().await;
-    mons.insert(dir_id, (path, watcher));
-    Ok(())
-}
-
 async fn rescan_directory(
-    db: &Pool<Sqlite>,
+    photos: &impl PhotoRepository,
+    files: &impl PhotoFileGateway,
     thumbnail_dir: &Path,
     path: &str,
     dir_id: &str,
 ) -> Result<()> {
     tracing::info!("Scanning directory: {}", path);
-    let photos = infrastructure::fs::scan_directory(path, dir_id).await?;
-    tracing::info!("Found {} photos", photos.len());
+    let scanned = files.scan_directory(path, dir_id).await?;
+    tracing::info!("Found {} photos", scanned.len());
 
-    let photo_repo = infrastructure::repositories::SqlitePhotoRepository::new(db.clone());
-    for photo in &photos {
-        match photo_repo.insert_or_ignore(photo).await {
+    for photo in &scanned {
+        match photos.insert_or_ignore(photo).await {
             Ok(_) => tracing::info!("Inserted photo {}", photo.file_name),
             Err(e) => tracing::error!("Failed to insert photo {}: {}", photo.file_name, e),
         }
     }
 
-    for photo in photos {
-        if let Ok(thumb_path) =
-            infrastructure::fs::generate_thumbnail(&photo.file_path, thumbnail_dir, 400).await
+    for photo in scanned {
+        if let Ok(thumb_path) = files
+            .generate_thumbnail(&photo.file_path, thumbnail_dir, 400)
+            .await
         {
-            let _ = photo_repo.update_thumbnail(&photo.id, &thumb_path).await;
+            let _ = photos.update_thumbnail(&photo.id, &thumb_path).await;
         }
     }
     Ok(())
