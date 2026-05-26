@@ -99,6 +99,12 @@ async fn setup_app(app: tauri::AppHandle) -> anyhow::Result<()> {
 
     let db = infrastructure::db::init_db(&app_data_dir).await?;
 
+    // Resolve security-scoped bookmarks to regain sandbox access
+    // to previously-added photo directories (macOS App Sandbox)
+    if let Err(e) = application::directory::resolve_bookmarks_on_startup(&db).await {
+        tracing::warn!("Failed to resolve some directory bookmarks: {}", e);
+    }
+
     let vector_index = infrastructure::vector::create_index();
 
     let vectors = infrastructure::repositories::SqliteVectorRepository::new(db.clone())

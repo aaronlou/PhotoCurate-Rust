@@ -22,7 +22,7 @@ pub async fn add_directory(
     }
 
     let id = uuid::Uuid::new_v4().to_string();
-    let bookmark_data = create_bookmark(&path).ok();
+    let bookmark_data = infrastructure::bookmarks::create_bookmark(&path).ok();
     let directory = Directory::new(id.clone(), path.clone(), bookmark_data);
 
     dir_repo.save(&directory).await?;
@@ -46,12 +46,75 @@ pub async fn remove_directory(
     id: String,
 ) -> Result<()> {
     let dir_repo = infrastructure::repositories::SqliteDirectoryRepository::new(db.clone());
+
+    // Release security-scoped access before deleting
+    if let Ok(Some(dir)) = dir_repo.find_by_id(&id).await {
+        infrastructure::bookmarks::release_access(&dir.path);
+    }
+
     dir_repo.delete(&id).await?;
 
     let mut mons = monitors.lock().await;
     if let Some((_, watcher)) = mons.remove(&id) {
         drop(watcher);
     }
+    Ok(())
+}
+
+/// Resolve all stored security-scoped bookmarks on startup.
+/// Must be called before the app accesses any saved directories
+/// (scanning, monitoring, etc.) to regain sandbox access.
+pub async fn resolve_bookmarks_on_startup(db: &Pool<Sqlite>) -> Result<()> {
+    let dir_repo = infrastructure::repositories::SqliteDirectoryRepository::new(db.clone());
+    let directories = dir_repo.find_all().await?;
+
+    for dir in directories {
+        let bookmark = match &dir.bookmark_data {
+            Some(b) if !b.is_empty() => b,
+            _ => {
+                tracing::warn!(
+                    "Directory '{}' has no bookmark data — access may fail under sandbox",
+                    dir.path
+                );
+                continue;
+            }
+        };
+
+        match infrastructure::bookmarks::resolve_bookmark(bookmark) {
+            Ok(resolved_path) => {
+                if resolved_path != dir.path {
+                    tracing::info!(
+                        "Directory moved: '{}' -> '{}', updating stored path",
+                        dir.path,
+                        resolved_path
+                    );
+                    // Still store the updated path for future reference
+                    // (the bookmark remains valid regardless)
+                    let _ = sqlx::query(
+                        "UPDATE directories SET path = ?1 WHERE id = ?2",
+                    )
+                    .bind(&resolved_path)
+                    .bind(&dir.id)
+                    .execute(db)
+                    .await;
+                } else {
+                    tracing::info!(
+                        "Resolved sandbox access for directory: '{}'",
+                        dir.path
+                    );
+                }
+            }
+            Err(e) => {
+                tracing::error!(
+                    "Failed to resolve bookmark for '{}': {}. \
+                     Directory will be inaccessible until re-added.",
+                    dir.path,
+                    e
+                );
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -103,9 +166,4 @@ async fn rescan_directory(
         }
     }
     Ok(())
-}
-
-fn create_bookmark(_path: &str) -> Result<Vec<u8>> {
-    // TODO: Implement security-scoped bookmark for macOS App Store
-    Ok(vec![])
 }

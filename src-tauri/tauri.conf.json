@@ -34,6 +34,9 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "resources": {
+      "PrivacyInfo.xcprivacy": "./"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -44,8 +47,8 @@
     "macOS": {
       "frameworks": [],
       "minimumSystemVersion": "14.0",
-      "signingIdentity": "-",
-      "providerShortName": null,
+      "signingIdentity": "${APPLE_SIGNING_IDENTITY}",
+      "providerShortName": "${APPLE_PROVIDER_SHORT_NAME}",
       "entitlements": "./Entitlements.plist"
     }
   }

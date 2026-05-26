@@ -152,4 +152,18 @@ bash scripts/setup_local_model.sh
 
 ## 许可证
 
-GNU General Public License v3.0 — 详见 [LICENSE](LICENSE)
+PhotoCurate 采用**双许可模式**：
+
+| 许可 | 适用场景 | 条件 |
+|------|----------|------|
+| **GPL v3** | 开源使用、学习、修改、再分发 | 必须保持开源，衍生作品也需使用 GPL v3 |
+| **商业许可** | Mac App Store 上架、闭源集成、商业分发 | 付费获取，无需开源你的修改 |
+
+```
+SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-PhotoCurate-Commercial
+```
+
+- 开源用户：直接使用 GPL v3 → [LICENSE](LICENSE)
+- 商业用户：联系获取商业许可 → [LICENSE.COMMERCIAL](LICENSE.COMMERCIAL)
+
+> 如果你只是**自己使用 PhotoCurate**，无论选择哪种许可，都不需要付费。商业许可主要面向需要将 PhotoCurate 或其修改版本上架 App Store 的用户。

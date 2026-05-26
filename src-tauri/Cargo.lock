@@ -2975,6 +2975,8 @@ dependencies = [
  "kamadak-exif",
  "ndarray",
  "notify",
+ "objc2",
+ "objc2-foundation",
  "ort",
  "regex",
  "reqwest 0.12.28",
