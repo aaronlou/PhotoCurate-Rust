@@ -93,16 +93,46 @@ export APPLE_PROVIDER_SHORT_NAME
 
 npm run tauri-build -- --bundles app
 
+APP_PATH="src-tauri/target/release/bundle/macos/PhotoCurate.app"
+PROFILE_PATH="$HOME/Library/MobileDevice/Provisioning Profiles/com.photocurate.provisionprofile"
+
+# --- Embed provisioning profile ---
+echo -e "\n${YELLOW}Embedding provisioning profile...${NC}"
+if [ -f "$PROFILE_PATH" ]; then
+    cp "$PROFILE_PATH" "$APP_PATH/Contents/embedded.provisionprofile"
+    echo -e "  ${GREEN}Provisioning profile embedded${NC}"
+else
+    echo -e "  ${RED}Provisioning profile not found at $PROFILE_PATH${NC}"
+    exit 1
+fi
+
+# --- Re-sign after embedding profile ---
+echo -e "\n${YELLOW}Re-signing with embedded provisioning profile...${NC}"
+codesign --sign "$APPLE_SIGNING_IDENTITY" \
+    --entitlements src-tauri/Entitlements.plist \
+    --options runtime \
+    --deep \
+    --force \
+    "$APP_PATH" 2>&1
+echo -e "  ${GREEN}Re-signed${NC}"
+
+# --- Build .pkg ---
+echo -e "\n${YELLOW}Building .pkg for App Store submission...${NC}"
+INSTALLER_IDENTITY="3rd Party Mac Developer Installer: Aaron Lou (V63B559WYX)"
+PKG_PATH="src-tauri/target/release/bundle/macos/PhotoCurate.pkg"
+
+productbuild --component "$APP_PATH" /Applications \
+    --sign "$INSTALLER_IDENTITY" \
+    "$PKG_PATH" 2>&1
+echo -e "  ${GREEN}.pkg created and signed${NC}"
+
 echo -e "\n${GREEN}=== Build Complete ===${NC}"
 echo ""
 echo "Artifacts:"
-echo "  App bundle: src-tauri/target/release/bundle/macos/PhotoCurate.app"
+echo "  App bundle: $APP_PATH"
+echo "  Package:    $PKG_PATH"
 echo ""
-echo "Next steps:"
-echo "  1. Test the signed app locally:"
-echo "     open src-tauri/target/release/bundle/macos/PhotoCurate.app"
-echo "  2. Upload to App Store Connect:"
-echo "     xcrun altool --upload-app -f <path-to-pkg> -t macOS -u <apple-id> --apiKey <key-id> --apiIssuer <issuer-id>"
-echo ""
-echo "  Or use Transporter app:"
-echo "     https://apps.apple.com/app/transporter/id1450874784"
+echo "To upload to App Store Connect:"
+echo "  export KEY_ID=YOUR_KEY_ID"
+echo "  export ISSUER_ID=YOUR_ISSUER_ID"
+echo "  xcrun altool --upload-app -f $PKG_PATH -t macOS --apiKey \$KEY_ID --apiIssuer \$ISSUER_ID"

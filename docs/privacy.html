@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>隐私政策 — PhotoCurate</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          brand: { 50: '#f4f3ff', 100: '#e9e6ff', 200: '#d5cfff', 300: '#b7a9ff',
+                   400: '#9478ff', 500: '#7c3aed', 600: '#6d28d9', 700: '#5b21b6',
+                   800: '#4c1d95', 900: '#3b0764' }
+        }
+      }
+    }
+  }
+</script>
+</head>
+<body class="bg-white text-gray-800 antialiased">
+
+<header class="hero-gradient text-white py-12 px-4 text-center">
+  <a href="/PhotoCurate-Rust/" class="inline-block mb-4 text-brand-200 hover:text-brand-100 transition-colors text-sm">&larr; 返回 PhotoCurate 首页</a>
+  <h1 class="text-4xl font-bold tracking-tight">隐私政策</h1>
+  <p class="text-brand-200 mt-2">最后更新日期：2026 年 5 月 26 日</p>
+</header>
+
+<main class="max-w-3xl mx-auto px-4 py-12 space-y-10 text-base leading-8">
+
+<section>
+  <h2 class="text-2xl font-bold text-brand-800 mb-4">1. 概述</h2>
+  <p>PhotoCurate（以下简称「本应用」）是一款本地运行的桌面软件，致力于保护您的隐私。本隐私政策说明本应用如何处理您的数据。</p>
+  <p class="mt-3">本应用的核心理念是：<strong>所有数据默认存储在您的设备上，未经您明确授权不会将数据发送到任何外部服务器。</strong></p>
+</section>
+
+<section>
+  <h2 class="text-2xl font-bold text-brand-800 mb-4">2. 本应用不收集的信息</h2>
+  <p>为消除疑虑，本应用明确<strong>不</strong>收集以下任何信息：</p>
+  <ul class="list-disc pl-6 mt-2 space-y-2">
+    <li><strong>不收集</strong>个人身份信息（姓名、邮箱、电话号码等）</li>
+    <li><strong>不收集</strong>设备信息或系统配置</li>
+    <li><strong>不收集</strong>崩溃日志或诊断数据</li>
+    <li><strong>不收集</strong>使用统计或分析数据</li>
+    <li><strong>不收集</strong>位置信息</li>
+    <li><strong>不含</strong>任何广告 SDK 或跟踪框架</li>
+    <li><strong>不含</strong>任何遥测或数据上报机制</li>
+  </ul>
+  <p class="mt-3">本应用<strong>没有</strong>用户账户系统，<strong>没有</strong>云端同步功能，<strong>没有</strong>分析后台。</p>
+</section>
+
+<section>
+  <h2 class="text-2xl font-bold text-brand-800 mb-4">3. 本地存储的数据</h2>
+  <p>以下数据<strong>仅存储</strong>在您设备的本地 SQLite 数据库中：</p>
+  <ul class="list-disc pl-6 mt-2 space-y-2">
+    <li><strong>已添加的照片文件夹路径：</strong>您通过系统对话框选择的目录</li>
+    <li><strong>照片元数据：</strong>从 EXIF 提取的拍摄日期、相机型号、光圈、快门等</li>
+    <li><strong>AI 评分结果：</strong>照片的美学评分（0-100 分）</li>
+    <li><strong>AI 搜索索引：</strong>图像向量嵌入数据（用于语义搜索）</li>
+    <li><strong>缩略图缓存：</strong>照片缩略图文件</li>
+    <li><strong>API Key：</strong>您可选的 Gemini API Key</li>
+  </ul>
+  <p class="mt-3">所有这些数据<strong>完全存储在您的设备上</strong>，您可以随时删除应用及其数据目录来清除所有数据。</p>
+</section>
+
+<section>
+  <h2 class="text-2xl font-bold text-brand-800 mb-4">4. 发送到外部服务的数据（需您主动配置）</h2>
+  <p>以下情况涉及将数据发送到外部服务器，每项<strong>均需您主动配置或触发</strong>：</p>
+
+  <div class="mt-4 p-4 bg-gray-50 rounded-lg space-y-4">
+    <div>
+      <strong class="text-brand-700">AI 照片美学评分（可选）</strong>
+      <p class="text-gray-600 text-sm">触发条件：您主动点击「开始评分」按钮。<br>
+      数据内容：照片文件被发送至 Google Gemini API (<code>generativelanguage.googleapis.com</code>) 进行分析。<br>
+      传输方式：HTTPS 加密。<br>
+      数据留存：Google 的 API 使用政策见 <a href="https://ai.google.dev/gemini-api/terms" class="text-brand-600 underline">Gemini API Terms</a>。</p>
+    </div>
+
+    <div>
+      <strong class="text-brand-700">中文语义搜索（可选）</strong>
+      <p class="text-gray-600 text-sm">触发条件：您的搜索查询。<br>
+      方式 A（Gemini API）：搜索文本发送至 Gemini API 进行向量化。<br>
+      方式 B（本地模型）：使用本地 Chinese-CLIP 模型，数据<strong>不离开设备</strong>。</p>
+    </div>
+
+    <div>
+      <strong class="text-brand-700">自动图像索引（可选）</strong>
+      <p class="text-gray-600 text-sm">触发条件：您添加新照片文件夹后自动执行。<br>
+      方式 A：照片发送至 Gemini API 生成文字描述再向量化。<br>
+      方式 B：使用本地模型，数据<strong>不离开设备</strong>。</p>
+    </div>
+
+    <div>
+      <strong class="text-brand-700">API Key 验证</strong>
+      <p class="text-gray-600 text-sm">触发条件：您保存 Gemini API Key 设置时。<br>
+      数据内容：仅发送测试请求以验证 Key 有效性。</p>
+    </div>
+  </div>
+
+  <p class="mt-4">如果您<strong>不配置 Gemini API Key</strong> 且安装本地 Chinese-CLIP 模型，则<strong>不会有任何数据离开您的设备</strong>。</p>
+</section>
+
+<section>
+  <h2 class="text-2xl font-bold text-brand-800 mb-4">5. 第三方服务</h2>
+  <p>本应用唯一涉及的外部服务是 <strong>Google Gemini API</strong>，且<strong>仅在您主动提供 API Key 时</strong>才会使用。Google 的隐私政策适用于通过其 API 传输的内容，请参阅 <a href="https://policies.google.com/privacy" class="text-brand-600 underline">Google Privacy Policy</a>。</p>
+</section>
+
+<section>
+  <h2 class="text-2xl font-bold text-brand-800 mb-4">6. 数据安全</h2>
+  <ul class="list-disc pl-6 space-y-2">
+    <li>所有本地数据存储在您的设备上，使用 SQLite 格式</li>
+    <li>与 Gemini API 的通信使用 HTTPS 加密</li>
+    <li>本应用不传输、不备份、不同步您的数据到任何云端</li>
+    <li>您的 API Key 仅存储在本地数据库，不会上传给开发者</li>
+  </ul>
+</section>
+
+<section>
+  <h2 class="text-2xl font-bold text-brand-800 mb-4">7. 用户权利</h2>
+  <p>由于所有数据均存储在您设备本地，您拥有对数据的完全控制权：</p>
+  <ul class="list-disc pl-6 mt-2 space-y-2">
+    <li>在应用内删除照片文件夹或移除照片，随时清除数据</li>
+    <li>删除 ~/Library/Application Support/com.photocurate/ 目录即可清除所有本地数据</li>
+    <li>本应用开发者无法访问您的本地数据，因此无法代为删除或导出</li>
+  </ul>
+</section>
+
+<section>
+  <h2 class="text-2xl font-bold text-brand-800 mb-4">8. 本政策的变更</h2>
+  <p>本隐私政策可能不时更新。新版本将在本页面发布，并更新「最后更新日期」。如需进行重大变更，我们将通过应用更新说明或 GitHub Release 通知。</p>
+</section>
+
+<section>
+  <h2 class="text-2xl font-bold text-brand-800 mb-4">9. 联系我们</h2>
+  <p>如有隐私相关问题，可通过以下方式联系：</p>
+  <ul class="list-disc pl-6 mt-2 space-y-2">
+    <li>GitHub Issues：<a href="https://github.com/aaronlou/PhotoCurate-Rust/issues" class="text-brand-600 underline">github.com/aaronlou/PhotoCurate-Rust/issues</a></li>
+  </ul>
+</section>
+
+</main>
+
+<footer class="border-t py-8 px-4 text-center text-gray-500 text-sm">
+  <p>PhotoCurate &copy; 2026 — <a href="https://github.com/aaronlou/PhotoCurate-Rust" class="text-brand-600 hover:underline">GitHub</a></p>
+</footer>
+
+</body>
+</html>
