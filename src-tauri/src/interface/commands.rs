@@ -93,8 +93,17 @@ pub async fn score_photos(
     state: State<'_, AppState>,
     app_handle: tauri::AppHandle,
     photo_ids: Vec<String>,
+    allow_keychain_read: Option<bool>,
 ) -> Result<(), String> {
-    map_err(application::scoring::score_photos(&state.db, photo_ids, &app_handle).await)
+    map_err(
+        application::scoring::score_photos(
+            &state.db,
+            photo_ids,
+            &app_handle,
+            allow_keychain_read.unwrap_or(false),
+        )
+        .await,
+    )
 }
 
 // ==================== Search Index ====================
@@ -103,6 +112,7 @@ pub async fn score_photos(
 pub async fn build_search_index(
     state: State<'_, AppState>,
     photo_ids: Vec<String>,
+    allow_keychain_read: Option<bool>,
 ) -> Result<(), String> {
     map_err(
         application::search::build_index(
@@ -110,6 +120,7 @@ pub async fn build_search_index(
             &state.vector_index,
             &state.chinese_clip,
             photo_ids,
+            allow_keychain_read.unwrap_or(false),
         )
         .await,
     )
@@ -121,6 +132,7 @@ pub async fn build_search_index(
 pub async fn natural_language_search(
     state: State<'_, AppState>,
     query: String,
+    allow_keychain_read: Option<bool>,
 ) -> Result<Vec<SearchResult>, String> {
     map_err(
         application::search::natural_language_search(
@@ -128,6 +140,7 @@ pub async fn natural_language_search(
             &state.vector_index,
             &state.chinese_clip,
             query,
+            allow_keychain_read.unwrap_or(false),
         )
         .await,
     )
@@ -181,6 +194,7 @@ pub async fn get_index_stats(state: State<'_, AppState>) -> Result<(usize, Optio
 pub async fn rebuild_all_index(
     state: State<'_, AppState>,
     app_handle: tauri::AppHandle,
+    allow_keychain_read: Option<bool>,
 ) -> Result<usize, String> {
     map_err(
         application::search::rebuild_all_index(
@@ -188,6 +202,7 @@ pub async fn rebuild_all_index(
             &state.vector_index,
             &state.chinese_clip,
             &app_handle,
+            allow_keychain_read.unwrap_or(false),
         )
         .await,
     )

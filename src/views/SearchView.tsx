@@ -5,6 +5,8 @@ import {
   getIndexStats,
   buildSearchIndex,
   rebuildAllIndex,
+  checkLocalModel,
+  getAiSettings,
 } from "@/hooks/useInvoke";
 import type { SearchResult } from "@/types";
 import {
@@ -51,6 +53,10 @@ export default function SearchView() {
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [isBuildingIndex, setIsBuildingIndex] = useState(false);
   const [isRebuilding, setIsRebuilding] = useState(false);
+  const [searchNotice, setSearchNotice] = useState<string | null>(null);
+  const [localModelAvailable, setLocalModelAvailable] = useState<boolean | null>(null);
+  const [hasGeminiKey, setHasGeminiKey] = useState(false);
+  const [allowSavedKeyRead, setAllowSavedKeyRead] = useState(false);
 
   const selectedPhoto = useAppStore((s) => s.selectedPhoto);
   const setSelectedPhoto = useAppStore((s) => s.setSelectedPhoto);
@@ -71,12 +77,32 @@ export default function SearchView() {
       .catch(() => setIndexStats(null));
   }, [indexedCount, isIndexing]);
 
+  useEffect(() => {
+    checkLocalModel().then(setLocalModelAvailable).catch(() => setLocalModelAvailable(false));
+    getAiSettings()
+      .then((settings) => setHasGeminiKey(Boolean(settings?.has_api_key)))
+      .catch(() => setHasGeminiKey(false));
+  }, []);
+
+  const needsSavedGeminiKey = localModelAvailable === false && hasGeminiKey;
+
+  const requireSavedKeyConsent = () => {
+    if (!needsSavedGeminiKey || allowSavedKeyRead) {
+      return true;
+    }
+    setSearchError(null);
+    setSearchNotice("需要读取已保存的 Gemini API Key。请先勾选页面上的说明，确认后再继续。");
+    return false;
+  };
+
   const handleSearch = async () => {
     if (!query.trim()) return;
+    if (!requireSavedKeyConsent()) return;
     setIsSearching(true);
     setSearchError(null);
+    setSearchNotice(null);
     try {
-      const res = await naturalLanguageSearch(query.trim());
+      const res = await naturalLanguageSearch(query.trim(), needsSavedGeminiKey);
       const sorted = res.sort((a, b) => b.similarity - a.similarity);
       setResults(sorted);
 
@@ -97,9 +123,11 @@ export default function SearchView() {
 
   const handleBuildIndex = async () => {
     if (unindexedPhotos.length === 0) return;
+    if (!requireSavedKeyConsent()) return;
     setIsBuildingIndex(true);
+    setSearchNotice(null);
     try {
-      await buildSearchIndex(unindexedPhotos.map((p) => p.id));
+      await buildSearchIndex(unindexedPhotos.map((p) => p.id), needsSavedGeminiKey);
     } catch (e) {
       console.error(e);
     } finally {
@@ -108,13 +136,15 @@ export default function SearchView() {
   };
 
   const handleRebuildAll = async () => {
+    if (!requireSavedKeyConsent()) return;
     if (!window.confirm("确定要重建所有索引吗？这会清空现有向量并重新生成，可能需要一些时间。")) {
       return;
     }
     setIsRebuilding(true);
     setSearchError(null);
+    setSearchNotice(null);
     try {
-      const count = await rebuildAllIndex();
+      const count = await rebuildAllIndex(needsSavedGeminiKey);
       setSearchError(`索引重建完成，成功索引 ${count} 张照片`);
       const stats = await getIndexStats();
       setIndexStats(stats);
@@ -257,6 +287,21 @@ export default function SearchView() {
         </div>
       )}
 
+      {needsSavedGeminiKey && (
+        <label className="mx-6 mb-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+          <input
+            type="checkbox"
+            checked={allowSavedKeyRead}
+            onChange={(e) => setAllowSavedKeyRead(e.target.checked)}
+            className="mt-0.5"
+          />
+          <span>
+            搜索索引没有本地 Chinese-CLIP 模型时，会从 macOS 钥匙串读取 PhotoCurate 保存的 Gemini API Key，
+            只用于生成搜索向量；不会读取其他钥匙串项目，也不会把 Key 显示在界面上。
+          </span>
+        </label>
+      )}
+
       {/* Diagnostics toggle */}
       <div className="mx-6 mb-2">
         <button
@@ -385,6 +430,25 @@ export default function SearchView() {
           <button
             onClick={() => setSearchError(null)}
             className="text-xs text-red-500 hover:text-red-700"
+          >
+            关闭
+          </button>
+        </div>
+      )}
+
+      {searchNotice && (
+        <div className="mx-6 mb-3 bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-2">
+          <AlertTriangle
+            size={14}
+            className="text-amber-600 mt-0.5 flex-shrink-0"
+          />
+          <div className="flex-1">
+            <p className="text-xs text-amber-700 font-medium">需要确认</p>
+            <p className="text-xs text-amber-600 mt-0.5">{searchNotice}</p>
+          </div>
+          <button
+            onClick={() => setSearchNotice(null)}
+            className="text-xs text-amber-600 hover:text-amber-800"
           >
             关闭
           </button>

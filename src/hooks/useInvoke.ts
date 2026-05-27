@@ -45,18 +45,18 @@ export async function startScanning(directoryId: string): Promise<void> {
 }
 
 // Scoring
-export async function scorePhotos(photoIds: string[]): Promise<void> {
-  return invoke("score_photos", { photoIds });
+export async function scorePhotos(photoIds: string[], allowKeychainRead = false): Promise<void> {
+  return invoke("score_photos", { photoIds, allowKeychainRead });
 }
 
 // Search Index
-export async function buildSearchIndex(photoIds: string[]): Promise<void> {
-  return invoke("build_search_index", { photoIds });
+export async function buildSearchIndex(photoIds: string[], allowKeychainRead = false): Promise<void> {
+  return invoke("build_search_index", { photoIds, allowKeychainRead });
 }
 
 // Search
-export async function naturalLanguageSearch(query: string): Promise<SearchResult[]> {
-  return invoke("natural_language_search", { query });
+export async function naturalLanguageSearch(query: string, allowKeychainRead = false): Promise<SearchResult[]> {
+  return invoke("natural_language_search", { query, allowKeychainRead });
 }
 
 // Export
@@ -97,6 +97,6 @@ export async function getIndexStats(): Promise<{ count: number; dimension: numbe
   return { count, dimension };
 }
 
-export async function rebuildAllIndex(): Promise<number> {
-  return invoke("rebuild_all_index");
+export async function rebuildAllIndex(allowKeychainRead = false): Promise<number> {
+  return invoke("rebuild_all_index", { allowKeychainRead });
 }

@@ -94,10 +94,14 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<()> {
             id TEXT PRIMARY KEY DEFAULT 'default',
             provider TEXT NOT NULL DEFAULT 'gemini',
             api_key TEXT NOT NULL DEFAULT '',
+            has_api_key BOOLEAN NOT NULL DEFAULT 0,
+            key_storage TEXT NOT NULL DEFAULT 'database',
             scoring_provider TEXT NOT NULL DEFAULT 'gemini',
             scoring_model TEXT NOT NULL DEFAULT 'gemini-3.1-flash-lite',
             scoring_base_url TEXT NOT NULL DEFAULT '',
             scoring_api_key TEXT NOT NULL DEFAULT '',
+            has_scoring_api_key BOOLEAN NOT NULL DEFAULT 0,
+            scoring_key_storage TEXT NOT NULL DEFAULT 'database',
             ollama_base_url TEXT NOT NULL DEFAULT 'http://localhost:11434',
             ollama_embed_model TEXT NOT NULL DEFAULT 'nomic-embed-text',
             ollama_vision_model TEXT NOT NULL DEFAULT 'llava'
@@ -116,6 +120,15 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<()> {
     .await?;
     ensure_ai_settings_column(pool, "scoring_base_url", "TEXT NOT NULL DEFAULT ''").await?;
     ensure_ai_settings_column(pool, "scoring_api_key", "TEXT NOT NULL DEFAULT ''").await?;
+    ensure_ai_settings_column(pool, "has_api_key", "BOOLEAN NOT NULL DEFAULT 0").await?;
+    ensure_ai_settings_column(pool, "key_storage", "TEXT NOT NULL DEFAULT 'database'").await?;
+    ensure_ai_settings_column(pool, "has_scoring_api_key", "BOOLEAN NOT NULL DEFAULT 0").await?;
+    ensure_ai_settings_column(
+        pool,
+        "scoring_key_storage",
+        "TEXT NOT NULL DEFAULT 'database'",
+    )
+    .await?;
 
     Ok(())
 }
@@ -124,13 +137,15 @@ async fn init_default_settings(pool: &Pool<Sqlite>) -> Result<()> {
     sqlx::query(
         r#"
         INSERT OR IGNORE INTO ai_settings (
-            id, provider, api_key, scoring_provider, scoring_model,
-            scoring_base_url, scoring_api_key, ollama_base_url,
+            id, provider, api_key, has_api_key, key_storage,
+            scoring_provider, scoring_model, scoring_base_url, scoring_api_key,
+            has_scoring_api_key, scoring_key_storage, ollama_base_url,
             ollama_embed_model, ollama_vision_model
         )
         VALUES (
-            'default', 'gemini', '', 'gemini', 'gemini-3.1-flash-lite',
-            '', '', 'http://localhost:11434', 'nomic-embed-text', 'llava'
+            'default', 'gemini', '', 0, 'database',
+            'gemini', 'gemini-3.1-flash-lite', '', '',
+            0, 'database', 'http://localhost:11434', 'nomic-embed-text', 'llava'
         )
         "#,
     )

@@ -18,6 +18,7 @@ pub async fn build_index(
     vector_index: &SharedVectorIndex,
     chinese_clip: &Option<Arc<infrastructure::ai::ChineseClipService>>,
     photo_ids: Vec<String>,
+    allow_keychain_read: bool,
 ) -> Result<()> {
     let settings_repo = infrastructure::repositories::SqliteSettingsRepository::new(db.clone());
     let photo_repo = infrastructure::repositories::SqlitePhotoRepository::new(db.clone());
@@ -33,6 +34,7 @@ pub async fn build_index(
         &embeddings,
         &progress,
         photo_ids,
+        allow_keychain_read,
     )
     .await
 }
@@ -45,6 +47,7 @@ pub async fn build_index_with(
     embeddings: &impl EmbeddingService,
     progress: &impl ProgressReporter,
     photo_ids: Vec<String>,
+    allow_keychain_read: bool,
 ) -> Result<()> {
     let selected_photos = find_photos_by_ids(photos, photo_ids).await?;
     index_photos(
@@ -56,6 +59,7 @@ pub async fn build_index_with(
         progress,
         selected_photos,
         false,
+        allow_keychain_read,
     )
     .await
     .map(|_| ())
@@ -80,6 +84,7 @@ pub async fn auto_index_unindexed(
         vector_index,
         &embeddings,
         &progress,
+        false,
     )
     .await
 }
@@ -91,8 +96,9 @@ pub async fn auto_index_unindexed_with(
     index: &impl VectorIndexStore,
     embeddings: &impl EmbeddingService,
     progress: &impl ProgressReporter,
+    allow_keychain_read: bool,
 ) -> Result<()> {
-    if embedding_unavailable(settings, embeddings).await? {
+    if automatic_embedding_unavailable(embeddings) {
         progress.indexing_progress(IndexingProgressEvent {
             current: 0,
             total: 0,
@@ -103,7 +109,15 @@ pub async fn auto_index_unindexed_with(
 
     let unindexed = photos.find_unindexed().await?;
     index_photos(
-        settings, photos, vectors, index, embeddings, progress, unindexed, true,
+        settings,
+        photos,
+        vectors,
+        index,
+        embeddings,
+        progress,
+        unindexed,
+        true,
+        allow_keychain_read,
     )
     .await
     .map(|_| ())
@@ -114,6 +128,7 @@ pub async fn rebuild_all_index(
     vector_index: &SharedVectorIndex,
     chinese_clip: &Option<Arc<infrastructure::ai::ChineseClipService>>,
     app_handle: &tauri::AppHandle,
+    allow_keychain_read: bool,
 ) -> Result<usize> {
     let settings_repo = infrastructure::repositories::SqliteSettingsRepository::new(db.clone());
     let photo_repo = infrastructure::repositories::SqlitePhotoRepository::new(db.clone());
@@ -128,6 +143,7 @@ pub async fn rebuild_all_index(
         vector_index,
         &embeddings,
         &progress,
+        allow_keychain_read,
     )
     .await
 }
@@ -139,6 +155,7 @@ pub async fn rebuild_all_index_with(
     index: &impl VectorIndexStore,
     embeddings: &impl EmbeddingService,
     progress: &impl ProgressReporter,
+    allow_keychain_read: bool,
 ) -> Result<usize> {
     index.clear().await;
     vectors.delete_all().await?;
@@ -150,7 +167,15 @@ pub async fn rebuild_all_index_with(
     }
 
     index_photos(
-        settings, photos, vectors, index, embeddings, progress, all_photos, true,
+        settings,
+        photos,
+        vectors,
+        index,
+        embeddings,
+        progress,
+        all_photos,
+        true,
+        allow_keychain_read,
     )
     .await
 }
@@ -160,6 +185,7 @@ pub async fn natural_language_search(
     vector_index: &SharedVectorIndex,
     chinese_clip: &Option<Arc<infrastructure::ai::ChineseClipService>>,
     query: String,
+    allow_keychain_read: bool,
 ) -> Result<Vec<SearchResult>> {
     let settings_repo = infrastructure::repositories::SqliteSettingsRepository::new(db.clone());
     let photo_repo = infrastructure::repositories::SqlitePhotoRepository::new(db.clone());
@@ -171,6 +197,7 @@ pub async fn natural_language_search(
         vector_index,
         &embeddings,
         query,
+        allow_keychain_read,
     )
     .await
 }
@@ -181,9 +208,9 @@ pub async fn natural_language_search_with(
     index: &impl VectorIndexStore,
     embeddings: &impl EmbeddingService,
     query: String,
+    allow_keychain_read: bool,
 ) -> Result<Vec<SearchResult>> {
-    let api_key = crate::application::scoring::resolve_api_key_from_settings(settings).await?;
-    require_embedding_service(&api_key, embeddings)?;
+    let api_key = resolve_embedding_api_key(settings, embeddings, allow_keychain_read).await?;
 
     let query_embedding = embeddings.embed_text(&api_key, &query).await?;
     let matches = index
@@ -222,9 +249,9 @@ async fn index_photos(
     progress: &impl ProgressReporter,
     photos_to_index: Vec<Photo>,
     emit_progress: bool,
+    allow_keychain_read: bool,
 ) -> Result<usize> {
-    let api_key = crate::application::scoring::resolve_api_key_from_settings(settings_repo).await?;
-    require_embedding_service(&api_key, embeddings)?;
+    let api_key = resolve_embedding_api_key(settings_repo, embeddings, allow_keychain_read).await?;
 
     let total = photos_to_index.len();
     if emit_progress {
@@ -294,17 +321,24 @@ async fn index_photo(
     Ok(())
 }
 
-async fn embedding_unavailable(
+async fn resolve_embedding_api_key(
     settings: &impl SettingsRepository,
     embeddings: &impl EmbeddingService,
-) -> Result<bool> {
-    let api_key = crate::application::scoring::resolve_api_key_from_settings(settings).await?;
-    Ok(!embeddings.has_local_model() && api_key.is_empty())
-}
+    allow_keychain_read: bool,
+) -> Result<String> {
+    if embeddings.has_local_model() {
+        return Ok(String::new());
+    }
 
-fn require_embedding_service(api_key: &str, embeddings: &impl EmbeddingService) -> Result<()> {
-    if !embeddings.has_local_model() && api_key.is_empty() {
+    let api_key =
+        crate::application::scoring::resolve_api_key_from_settings(settings, allow_keychain_read)
+            .await?;
+    if api_key.is_empty() {
         return Err(PhotoCurateError::EmbeddingServiceMissing);
     }
-    Ok(())
+    Ok(api_key)
+}
+
+fn automatic_embedding_unavailable(embeddings: &impl EmbeddingService) -> bool {
+    !embeddings.has_local_model()
 }

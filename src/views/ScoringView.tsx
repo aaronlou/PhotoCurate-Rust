@@ -66,6 +66,8 @@ export default function ScoringView() {
   const [keyStatus, setKeyStatus] = useState<{ valid: boolean; message: string } | null>(null);
   const [localModelAvailable, setLocalModelAvailable] = useState<boolean | null>(null);
   const [scoreError, setScoreError] = useState<string | null>(null);
+  const [scoreNotice, setScoreNotice] = useState<string | null>(null);
+  const [allowSavedKeyRead, setAllowSavedKeyRead] = useState(false);
 
   const unscoredCount = photos.filter((p) => !p.has_been_scored).length;
   const indexedCount = photos.filter((p) => p.has_embedding).length;
@@ -95,22 +97,36 @@ export default function ScoringView() {
     setScoringBaseUrl(config.defaultBaseUrl);
     setApiKey("");
     setKeyStatus(null);
+    setAllowSavedKeyRead(false);
   };
 
   const handleStartScoring = async () => {
     const unscored = photos.filter((p) => !p.has_been_scored).slice(0, 50);
     if (unscored.length === 0) return;
 
+    let allowKeychainRead = false;
+    if (hasScoringKey) {
+      if (!allowSavedKeyRead) {
+        setScoreError(null);
+        setScoreNotice("即将读取已保存的 API Key。请先勾选下方说明，确认后再开始评分。");
+        setShowSettings(true);
+        return;
+      }
+      allowKeychainRead = true;
+    }
+
     setScoreError(null);
+    setScoreNotice(null);
     setIsScoring(true);
     setScoreProgress({ current: 0, total: unscored.length });
 
     try {
-      await scorePhotos(unscored.map((p) => p.id));
+      await scorePhotos(unscored.map((p) => p.id), allowKeychainRead);
       const updated = await getPhotos(photoSortOrder);
       setPhotos(updated);
     } catch (e) {
       setScoreError(typeof e === "string" ? e : String(e));
+      setScoreNotice(null);
       setIsScoring(false);
       setScoreProgress(null);
     }
@@ -136,6 +152,8 @@ export default function ScoringView() {
       setAiSettings(settings);
       syncSettingsForm(settings);
       setApiKey("");
+      setAllowSavedKeyRead(false);
+      setScoreNotice(null);
     }
   };
 
@@ -149,6 +167,8 @@ export default function ScoringView() {
     setAiSettings(settings);
     syncSettingsForm(settings);
     setKeyStatus({ valid: true, message: "模型设置已保存" });
+    setAllowSavedKeyRead(false);
+    setScoreNotice(null);
   };
 
   const activeProvider = providerConfig(scoringProvider);
@@ -287,6 +307,20 @@ export default function ScoringView() {
                 </div>
               )}
             </div>
+            {hasScoringKey && (
+              <label className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                <input
+                  type="checkbox"
+                  checked={allowSavedKeyRead}
+                  onChange={(e) => setAllowSavedKeyRead(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  开始评分时会从 macOS 钥匙串读取 PhotoCurate 保存的 {activeProvider.label} API Key，
+                  只用于本次连接 {activeProvider.label} 评分服务；不会读取其他钥匙串项目，也不会把 Key 显示在界面上。
+                </span>
+              </label>
+            )}
             <div className="text-xs text-gray-500">
               当前评分: {providerConfig(aiSettings?.scoring_provider ?? scoringProvider).label}
               <span className="mx-1 text-gray-300">/</span>
@@ -320,6 +354,13 @@ export default function ScoringView() {
           <div className="mt-3 flex items-center gap-1.5 text-xs text-red-500">
             <AlertCircle size={14} />
             {scoreError}
+          </div>
+        )}
+
+        {scoreNotice && (
+          <div className="mt-3 flex items-center gap-1.5 text-xs text-amber-600">
+            <AlertCircle size={14} />
+            {scoreNotice}
           </div>
         )}
 

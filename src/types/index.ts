@@ -38,11 +38,13 @@ export interface AISettings {
   provider: "gemini";
   api_key: string;
   has_api_key: boolean;
+  key_storage: "keychain" | "database" | "memory";
   scoring_provider: ScoringProvider;
   scoring_model: string;
   scoring_base_url: string;
   scoring_api_key: string;
   has_scoring_api_key: boolean;
+  scoring_key_storage: "keychain" | "database" | "memory";
   ollama_base_url: string;
   ollama_embed_model: string;
   ollama_vision_model: string;

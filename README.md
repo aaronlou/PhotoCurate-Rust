@@ -3,7 +3,7 @@
 **AI 驱动的照片管理与精选工具。** 自动为你的照片打分，用自然语言搜索照片内容，一键导出高分作品。
 
 <p align="center">
-  <a href="https://github.com/aaronlou/PhotoCurate-Rust/releases/latest/download/PhotoCurate_0.1.0_aarch64.dmg">
+  <a href="https://github.com/aaronlou/PhotoCurate-Rust/releases/latest/download/PhotoCurate_0.1.3_aarch64.dmg">
     <img src="https://img.shields.io/badge/下载-macOS_DMG-7c3aed?style=for-the-badge&logo=apple" alt="下载 macOS DMG">
   </a>
   <a href="https://github.com/aaronlou/PhotoCurate-Rust/releases">
@@ -48,6 +48,8 @@ PhotoCurate 的评分和语义搜索需要 AI 能力，你有两种选择：
 3. 打开 PhotoCurate 后，在「评分」页面选择模型并填入 Key 即可
 
 > 优点：无需下载模型，开箱即用。免费额度足够个人日常使用。
+
+> 隐私说明：macOS 版本会把 API Key 保存在系统钥匙串中。应用启动和打开设置页时不会读取钥匙串；只有在你明确点击评分、搜索索引、搜索或验证 API Key，并确认页面提示后，才会读取 PhotoCurate 自己保存的对应 API Key。
 
 **方式 B：本地 Chinese-CLIP 模型（离线，无需网络）**
 
@@ -135,7 +137,7 @@ bash scripts/setup_local_model.sh
 
 如果不想安装 Python，可以直接下载已转换好的 ONNX 文件：
 
-1. 下载 [chinese_clip_onnx_models.zip](https://github.com/aaronlou/PhotoCurate-Rust/releases/latest/download/chinese_clip_onnx_models.zip)（约 660 MB）
+1. 下载 [chinese_clip_onnx_models.zip](https://github.com/aaronlou/PhotoCurate-Rust/releases/download/v0.1.0/chinese_clip_onnx_models.zip)（约 660 MB）
 2. 解压后将 4 个文件复制到运行时目录
 
 **运行时目录位置：**
