@@ -2,7 +2,7 @@ use crate::application::ports::{
     BookmarkGateway, DirectoryMonitor, EmbeddingService, PhotoFileGateway, ProgressReporter,
     ScoringService,
 };
-use crate::domain::models::{IndexingProgressEvent, Photo, ScoreResult};
+use crate::domain::models::{AiSettings, IndexingProgressEvent, Photo, ScoreResult};
 use crate::error::Result;
 use crate::infrastructure;
 use std::collections::HashMap;
@@ -126,12 +126,12 @@ impl EmbeddingService for AiGateway {
 }
 
 impl ScoringService for AiGateway {
-    async fn score_image(&self, api_key: &str, image_path: &str) -> Result<ScoreResult> {
-        infrastructure::ai::score_image(api_key, image_path).await
+    async fn score_image(&self, settings: &AiSettings, image_path: &str) -> Result<ScoreResult> {
+        infrastructure::ai::score_image(settings, image_path).await
     }
 
-    async fn validate_api_key(&self, api_key: &str) -> Result<(bool, String)> {
-        infrastructure::ai::validate_api_key(api_key).await
+    async fn validate_api_key(&self, settings: &AiSettings) -> Result<(bool, String)> {
+        infrastructure::ai::validate_api_key(settings).await
     }
 }
 

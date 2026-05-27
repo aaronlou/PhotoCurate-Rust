@@ -94,6 +94,10 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<()> {
             id TEXT PRIMARY KEY DEFAULT 'default',
             provider TEXT NOT NULL DEFAULT 'gemini',
             api_key TEXT NOT NULL DEFAULT '',
+            scoring_provider TEXT NOT NULL DEFAULT 'gemini',
+            scoring_model TEXT NOT NULL DEFAULT 'gemini-3.1-flash-lite',
+            scoring_base_url TEXT NOT NULL DEFAULT '',
+            scoring_api_key TEXT NOT NULL DEFAULT '',
             ollama_base_url TEXT NOT NULL DEFAULT 'http://localhost:11434',
             ollama_embed_model TEXT NOT NULL DEFAULT 'nomic-embed-text',
             ollama_vision_model TEXT NOT NULL DEFAULT 'llava'
@@ -103,17 +107,53 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<()> {
     .execute(pool)
     .await?;
 
+    ensure_ai_settings_column(pool, "scoring_provider", "TEXT NOT NULL DEFAULT 'gemini'").await?;
+    ensure_ai_settings_column(
+        pool,
+        "scoring_model",
+        "TEXT NOT NULL DEFAULT 'gemini-3.1-flash-lite'",
+    )
+    .await?;
+    ensure_ai_settings_column(pool, "scoring_base_url", "TEXT NOT NULL DEFAULT ''").await?;
+    ensure_ai_settings_column(pool, "scoring_api_key", "TEXT NOT NULL DEFAULT ''").await?;
+
     Ok(())
 }
 
 async fn init_default_settings(pool: &Pool<Sqlite>) -> Result<()> {
     sqlx::query(
         r#"
-        INSERT OR IGNORE INTO ai_settings (id, provider, api_key, ollama_base_url, ollama_embed_model, ollama_vision_model)
-        VALUES ('default', 'gemini', '', 'http://localhost:11434', 'nomic-embed-text', 'llava')
+        INSERT OR IGNORE INTO ai_settings (
+            id, provider, api_key, scoring_provider, scoring_model,
+            scoring_base_url, scoring_api_key, ollama_base_url,
+            ollama_embed_model, ollama_vision_model
+        )
+        VALUES (
+            'default', 'gemini', '', 'gemini', 'gemini-3.1-flash-lite',
+            '', '', 'http://localhost:11434', 'nomic-embed-text', 'llava'
+        )
         "#,
     )
     .execute(pool)
     .await?;
+    Ok(())
+}
+
+async fn ensure_ai_settings_column(
+    pool: &Pool<Sqlite>,
+    column: &str,
+    definition: &str,
+) -> Result<()> {
+    let columns: Vec<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('ai_settings')")
+            .fetch_all(pool)
+            .await?;
+
+    if columns.iter().any(|(name,)| name == column) {
+        return Ok(());
+    }
+
+    let query = format!("ALTER TABLE ai_settings ADD COLUMN {column} {definition}");
+    sqlx::query(&query).execute(pool).await?;
     Ok(())
 }

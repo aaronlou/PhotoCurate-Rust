@@ -72,8 +72,8 @@ pub trait EmbeddingService {
 }
 
 pub trait ScoringService {
-    async fn score_image(&self, api_key: &str, image_path: &str) -> Result<ScoreResult>;
-    async fn validate_api_key(&self, api_key: &str) -> Result<(bool, String)>;
+    async fn score_image(&self, settings: &AiSettings, image_path: &str) -> Result<ScoreResult>;
+    async fn validate_api_key(&self, settings: &AiSettings) -> Result<(bool, String)>;
 }
 
 pub trait VectorIndexStore {

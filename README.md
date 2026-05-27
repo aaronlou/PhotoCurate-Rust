@@ -41,17 +41,17 @@ PhotoCurate 就是帮你解决这些问题的桌面应用。
 
 PhotoCurate 的评分和语义搜索需要 AI 能力，你有两种选择：
 
-**方式 A：Gemini API（推荐，零配置）**
+**方式 A：云端视觉模型 API（推荐，零配置）**
 
-1. 打开 [Google AI Studio](https://aistudio.google.com/apikey)
-2. 点击「Create API Key」获取免费 Key
-3. 打开 PhotoCurate 后，在「评分」页面填入 Key 即可
+1. Gemini：打开 [Google AI Studio](https://aistudio.google.com/apikey)，点击「Create API Key」获取 Key
+2. Qwen-VL：在阿里云百炼 / DashScope 获取 API Key
+3. 打开 PhotoCurate 后，在「评分」页面选择模型并填入 Key 即可
 
 > 优点：无需下载模型，开箱即用。免费额度足够个人日常使用。
 
 **方式 B：本地 Chinese-CLIP 模型（离线，无需网络）**
 
-如果你希望完全不依赖网络和 API Key，可以使用本地模型。本地模型仅支持语义搜索，评分仍需 Gemini API：
+如果你希望搜索功能不依赖网络和 API Key，可以使用本地模型。本地模型仅支持语义搜索，评分仍需 Gemini、Qwen-VL 或兼容 OpenAI Vision 格式的云端视觉模型：
 
 ```bash
 # 1. 创建 Python 虚拟环境并安装依赖
@@ -90,7 +90,7 @@ npm run tauri-dev
 ## 使用流程
 
 1. **导入照片** — 点击左侧「图库」，添加你的照片文件夹。应用会自动扫描照片，并在后台生成搜索索引
-2. **AI 评分** — 切换到「评分」页，配置 Gemini API Key 后开始评分，进度条实时更新
+2. **AI 评分** — 切换到「评分」页，配置 Gemini、Qwen-VL 或自定义视觉模型 API Key 后开始评分，进度条实时更新
 3. **智能检索** — 照片索引完成后，在「搜索」页输入中文描述即可找到匹配的画面，无需手动操作
 4. **精选导出** — 在「导出」页设置评分门槛，一键导出高分照片
 
@@ -111,11 +111,11 @@ src-tauri/src/
 | 前端 | React 19 + TypeScript + Tailwind CSS + Zustand |
 | 后端 | Tauri v2 (Rust) |
 | 数据库 | SQLite + sqlx |
-| AI 评分 | Gemini API |
+| AI 评分 | Gemini API / Qwen-VL / OpenAI-compatible Vision API |
 | 语义搜索 | Chinese-CLIP (ONNX + CoreML) 或 Gemini Embedding |
 | 向量检索 | 内存 BruteForce + 余弦相似度 |
 
-后端应用层通过 ports trait 依赖仓储、文件系统、AI、进度上报等能力；SQLite、Tauri 事件、Gemini/Chinese-CLIP 等实现集中在 infrastructure/interface 适配层。这样用例代码不直接绑定具体数据库或 IPC 框架。
+后端应用层通过 ports trait 依赖仓储、文件系统、AI、进度上报等能力；SQLite、Tauri 事件、Gemini/Qwen-VL/Chinese-CLIP 等实现集中在 infrastructure/interface 适配层。这样用例代码不直接绑定具体数据库或 IPC 框架。
 
 ## 本地模型安装（可选）
 

@@ -91,6 +91,10 @@ struct AiSettingsRow {
     id: String,
     provider: String,
     api_key: String,
+    scoring_provider: String,
+    scoring_model: String,
+    scoring_base_url: String,
+    scoring_api_key: String,
     ollama_base_url: String,
     ollama_embed_model: String,
     ollama_vision_model: String,
@@ -103,6 +107,11 @@ impl From<AiSettingsRow> for AiSettings {
             provider: row.provider,
             api_key: row.api_key,
             has_api_key: false,
+            scoring_provider: row.scoring_provider,
+            scoring_model: row.scoring_model,
+            scoring_base_url: row.scoring_base_url,
+            scoring_api_key: row.scoring_api_key,
+            has_scoring_api_key: false,
             ollama_base_url: row.ollama_base_url,
             ollama_embed_model: row.ollama_embed_model,
             ollama_vision_model: row.ollama_vision_model,
@@ -440,12 +449,18 @@ impl SqliteSettingsRepository {
     pub async fn update(&self, settings: &AiSettings) -> Result<()> {
         sqlx::query(
             r#"UPDATE ai_settings SET
-               provider = ?1, api_key = ?2, ollama_base_url = ?3,
-               ollama_embed_model = ?4, ollama_vision_model = ?5
+               provider = ?1, api_key = ?2, scoring_provider = ?3,
+               scoring_model = ?4, scoring_base_url = ?5,
+               scoring_api_key = ?6, ollama_base_url = ?7,
+               ollama_embed_model = ?8, ollama_vision_model = ?9
                WHERE id = 'default'"#,
         )
         .bind(&settings.provider)
         .bind(&settings.api_key)
+        .bind(&settings.scoring_provider)
+        .bind(&settings.scoring_model)
+        .bind(&settings.scoring_base_url)
+        .bind(&settings.scoring_api_key)
         .bind(&settings.ollama_base_url)
         .bind(&settings.ollama_embed_model)
         .bind(&settings.ollama_vision_model)

@@ -38,7 +38,17 @@ export interface AISettings {
   provider: "gemini";
   api_key: string;
   has_api_key: boolean;
+  scoring_provider: ScoringProvider;
+  scoring_model: string;
+  scoring_base_url: string;
+  scoring_api_key: string;
+  has_scoring_api_key: boolean;
+  ollama_base_url: string;
+  ollama_embed_model: string;
+  ollama_vision_model: string;
 }
+
+export type ScoringProvider = "gemini" | "qwen_vl" | "openai_compatible_vision";
 
 export interface ScoreResult {
   score: number;

@@ -195,7 +195,7 @@ pub async fn rebuild_all_index(
 
 #[tauri::command]
 pub async fn validate_api_key(
-    api_key: String,
+    settings: serde_json::Value,
 ) -> Result<application::scoring::ValidateKeyResult, String> {
-    map_err(application::scoring::validate_api_key(&api_key).await)
+    map_err(application::scoring::validate_api_key(settings).await)
 }

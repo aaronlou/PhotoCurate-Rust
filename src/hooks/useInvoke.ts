@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { Photo, Directory, AISettings, SearchResult, ExportResult, PhotoSortOrder } from "@/types";
+import { Photo, Directory, AISettings, SearchResult, ExportResult, PhotoSortOrder, ScoringProvider } from "@/types";
 
 // Directory commands
 export async function pickDirectory(): Promise<string | null> {
@@ -81,8 +81,15 @@ export async function checkLocalModel(): Promise<boolean> {
   return invoke("check_local_model");
 }
 
-export async function validateApiKey(apiKey: string): Promise<{ valid: boolean; message: string }> {
-  return invoke("validate_api_key", { apiKey });
+export interface ValidateApiKeySettings {
+  scoring_provider: ScoringProvider;
+  scoring_model: string;
+  scoring_base_url: string;
+  scoring_api_key: string;
+}
+
+export async function validateApiKey(settings: ValidateApiKeySettings): Promise<{ valid: boolean; message: string }> {
+  return invoke("validate_api_key", { settings });
 }
 
 export async function getIndexStats(): Promise<{ count: number; dimension: number | null }> {
