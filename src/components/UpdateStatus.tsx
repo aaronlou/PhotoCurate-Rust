@@ -25,29 +25,42 @@ function formatDate(value: string | null) {
 }
 
 export default function UpdateStatus() {
-  const [state, setState] = useState<UpdateState>("idle");
+  const [state, setState] = useState<UpdateState>("checking");
   const [version, setVersion] = useState<string>("--");
   const [update, setUpdate] = useState<AppUpdateInfo | null>(null);
   const [downloadedBytes, setDownloadedBytes] = useState(0);
   const [totalBytes, setTotalBytes] = useState<number | null>(null);
-  const [message, setMessage] = useState<string>("检查更新");
+  const [message, setMessage] = useState<string>("正在检查...");
 
   useEffect(() => {
     getAppVersion().then(setVersion).catch(() => setVersion("--"));
   }, []);
 
-  const progress = totalBytes ? Math.min(100, Math.round((downloadedBytes / totalBytes) * 100)) : 0;
-  const releaseDate = formatDate(update?.date ?? null);
+  useEffect(() => {
+    let cancelled = false;
+    async function checkOnStart() {
+      await handleCheck({ quiet: true, cancelled: () => cancelled });
+    }
+    checkOnStart().catch(console.error);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  async function handleCheck() {
-    setState("checking");
-    setMessage("正在检查...");
+  async function handleCheck(options?: { quiet?: boolean; cancelled?: () => boolean }) {
+    if (!options?.quiet) {
+      setState("checking");
+      setMessage("正在检查...");
+    }
     try {
       const nextUpdate = await checkForAppUpdate();
+      if (options?.cancelled?.()) {
+        return;
+      }
       if (nextUpdate) {
         setUpdate(nextUpdate);
         setState("ready");
-        setMessage(`可升级到 ${nextUpdate.version}`);
+        setMessage(`新版本 ${nextUpdate.version}`);
       } else {
         setUpdate(null);
         setState("current");
@@ -83,7 +96,8 @@ export default function UpdateStatus() {
   }
 
   const isBusy = state === "checking" || state === "downloading" || state === "restarting";
-  const canInstall = state === "ready";
+  const progress = totalBytes ? Math.min(100, Math.round((downloadedBytes / totalBytes) * 100)) : 0;
+  const releaseDate = formatDate(update?.date ?? null);
 
   return (
     <div className="border-t border-gray-200 px-3 py-3">
@@ -92,37 +106,28 @@ export default function UpdateStatus() {
         <span className="font-medium text-gray-700">v{version}</span>
       </div>
 
-      {canInstall ? (
-        <div className="rounded-md border border-blue-200 bg-blue-50 p-2.5">
-          <div className="mb-2 flex items-start gap-2">
-            <DownloadCloud size={15} className="mt-0.5 shrink-0 text-blue-600" />
-            <div className="min-w-0">
-              <p className="text-[12px] font-semibold text-blue-700">
-                新版本 {update?.version}
-              </p>
-              {releaseDate && (
-                <p className="text-[11px] text-blue-500">{releaseDate}</p>
-              )}
-            </div>
-          </div>
-          {update?.body && (
-            <p className="mb-2 line-clamp-3 whitespace-pre-line text-[11px] leading-4 text-blue-700">
-              {update.body}
-            </p>
-          )}
+      {state === "ready" && (
+        <div className="space-y-2">
           <button
             type="button"
             onClick={handleInstall}
-            className="flex h-8 w-full items-center justify-center gap-1.5 rounded-md bg-blue-600 px-2 text-[12px] font-semibold text-white transition hover:bg-blue-700"
+            className="flex h-9 w-full items-center justify-center gap-1.5 rounded-full bg-blue-500 px-4 text-[13px] font-semibold text-white shadow-sm transition hover:bg-blue-600"
           >
             <RotateCw size={14} />
-            下载并重启升级
+            更新
           </button>
+          <div className="rounded-md bg-blue-50 px-2.5 py-2 text-[11px] leading-4 text-blue-700">
+            <p className="font-semibold">{message}</p>
+            {releaseDate && <p className="text-blue-500">{releaseDate}</p>}
+            {update?.body && <p className="mt-1 line-clamp-2 whitespace-pre-line">{update.body}</p>}
+          </div>
         </div>
-      ) : (
+      )}
+
+      {state !== "ready" && (
         <button
           type="button"
-          onClick={handleCheck}
+          onClick={() => handleCheck()}
           disabled={isBusy}
           className="flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-gray-200 bg-white px-2 text-[12px] font-medium text-gray-700 transition hover:border-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-70"
         >

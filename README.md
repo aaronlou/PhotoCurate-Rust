@@ -3,7 +3,7 @@
 **AI 驱动的照片管理与精选工具。** 自动为你的照片评分和点评，用自然语言搜索照片内容，并从作品库中提炼成长洞察。
 
 <p align="center">
-  <a href="https://github.com/aaronlou/PhotoCurate-Rust/releases/latest/download/PhotoCurate_0.1.5_aarch64.dmg">
+  <a href="https://github.com/aaronlou/PhotoCurate-Rust/releases/latest/download/PhotoCurate_0.1.6_aarch64.dmg">
     <img src="https://img.shields.io/badge/下载-macOS_DMG-7c3aed?style=for-the-badge&logo=apple" alt="下载 macOS DMG">
   </a>
   <a href="https://github.com/aaronlou/PhotoCurate-Rust/releases">
