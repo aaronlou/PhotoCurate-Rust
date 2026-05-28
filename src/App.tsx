@@ -3,6 +3,7 @@ import { useAppStore } from "@/stores/useAppStore";
 import Sidebar from "@/components/Sidebar";
 import LibraryView from "@/views/LibraryView";
 import ScoringView from "@/views/ScoringView";
+import InsightsView from "@/views/InsightsView";
 import SearchView from "@/views/SearchView";
 import ExportView from "@/views/ExportView";
 import { listen } from "@tauri-apps/api/event";
@@ -63,6 +64,7 @@ function App() {
       <main className="flex-1 overflow-hidden">
         {currentView === "library" && <LibraryView />}
         {currentView === "scoring" && <ScoringView />}
+        {currentView === "insights" && <InsightsView />}
         {currentView === "search" && <SearchView />}
         {currentView === "export" && <ExportView />}
       </main>

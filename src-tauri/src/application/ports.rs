@@ -1,7 +1,8 @@
 #![allow(async_fn_in_trait)]
 
 use crate::domain::models::{
-    AiSettings, Directory, IndexingProgressEvent, Photo, PhotoSortOrder, ScoreResult,
+    AiSettings, Directory, IndexingProgressEvent, Photo, PhotoEvaluation, PhotoSortOrder,
+    ScoreResult,
 };
 use crate::error::Result;
 use std::path::{Path, PathBuf};
@@ -32,6 +33,11 @@ pub trait DirectoryRepository {
 pub trait SettingsRepository {
     async fn get(&self) -> Result<AiSettings>;
     async fn update(&self, settings: &AiSettings) -> Result<()>;
+}
+
+pub trait PhotoEvaluationRepository {
+    async fn save(&self, evaluation: &PhotoEvaluation) -> Result<()>;
+    async fn find_latest_for_photo(&self, photo_id: &str) -> Result<Option<PhotoEvaluation>>;
 }
 
 pub trait VectorRepository {

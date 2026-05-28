@@ -48,6 +48,7 @@ pub struct Photo {
     pub directory_id: Option<String>,
     pub has_been_exported: bool,
     pub export_date: Option<DateTime<Utc>>,
+    pub latest_evaluation: Option<PhotoEvaluation>,
 }
 
 impl Photo {
@@ -85,6 +86,89 @@ pub struct AiSettings {
 pub struct ScoreResult {
     pub score: f64,
     pub review: String,
+    pub summary: String,
+    pub strengths: Vec<String>,
+    pub weaknesses: Vec<String>,
+    pub suggestions: Vec<String>,
+    pub dimension_scores: Vec<DimensionScore>,
+    pub tags: Vec<String>,
+    pub raw_response: String,
+}
+
+impl ScoreResult {
+    pub fn from_score_and_review(score: f64, review: String) -> Self {
+        Self {
+            score,
+            summary: review.clone(),
+            review,
+            strengths: vec![],
+            weaknesses: vec![],
+            suggestions: vec![],
+            dimension_scores: vec![],
+            tags: vec![],
+            raw_response: String::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DimensionScore {
+    pub name: String,
+    pub score: f64,
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PhotoEvaluation {
+    pub id: String,
+    pub photo_id: String,
+    pub overall_score: f64,
+    pub summary: String,
+    pub strengths: Vec<String>,
+    pub weaknesses: Vec<String>,
+    pub suggestions: Vec<String>,
+    pub dimension_scores: Vec<DimensionScore>,
+    pub tags: Vec<String>,
+    pub model_provider: String,
+    pub model_name: String,
+    pub prompt_version: String,
+    pub raw_response: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+impl PhotoEvaluation {
+    pub fn from_score_result(
+        photo_id: String,
+        result: ScoreResult,
+        model_provider: String,
+        model_name: String,
+        prompt_version: String,
+    ) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            photo_id,
+            overall_score: result.score,
+            summary: if result.summary.trim().is_empty() {
+                result.review
+            } else {
+                result.summary
+            },
+            strengths: result.strengths,
+            weaknesses: result.weaknesses,
+            suggestions: result.suggestions,
+            dimension_scores: result.dimension_scores,
+            tags: result.tags,
+            model_provider,
+            model_name,
+            prompt_version,
+            raw_response: if result.raw_response.trim().is_empty() {
+                None
+            } else {
+                Some(result.raw_response)
+            },
+            created_at: Utc::now(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -115,6 +199,63 @@ pub struct ExportFailure {
     pub id: String,
     pub file_name: String,
     pub error: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LibraryInsights {
+    pub total_photos: usize,
+    pub evaluated_photos: usize,
+    pub score_only_photos: usize,
+    pub average_score: Option<f64>,
+    pub median_score: Option<f64>,
+    pub high_score_count: usize,
+    pub high_score_rate: f64,
+    pub score_distribution: Vec<ScoreBucket>,
+    pub dimension_averages: Vec<DimensionInsight>,
+    pub top_strengths: Vec<TextInsight>,
+    pub recurring_weaknesses: Vec<TextInsight>,
+    pub suggested_practices: Vec<TextInsight>,
+    pub top_tags: Vec<TextInsight>,
+    pub top_photos: Vec<InsightPhoto>,
+    pub recent_trend: Option<ScoreTrend>,
+    pub coach_notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScoreBucket {
+    pub label: String,
+    pub min: f64,
+    pub max: f64,
+    pub count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DimensionInsight {
+    pub name: String,
+    pub average_score: f64,
+    pub count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TextInsight {
+    pub label: String,
+    pub count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InsightPhoto {
+    pub id: String,
+    pub file_name: String,
+    pub score: f64,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScoreTrend {
+    pub earlier_average: f64,
+    pub recent_average: f64,
+    pub delta: f64,
+    pub recent_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

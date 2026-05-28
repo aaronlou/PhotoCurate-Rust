@@ -1,6 +1,6 @@
 pub mod chinese_clip;
 
-use crate::domain::models::{AiSettings, ScoreResult};
+use crate::domain::models::{AiSettings, DimensionScore, ScoreResult};
 use crate::error::{PhotoCurateError, Result};
 use anyhow::Context;
 use serde_json::json;
@@ -118,7 +118,7 @@ async fn score_image_gemini(
         }],
         "generationConfig": {
             "temperature": 0.3,
-            "maxOutputTokens": 512
+            "maxOutputTokens": 1024
         }
     });
 
@@ -172,7 +172,7 @@ async fn score_image_openai_compatible_vision(
             ]
         }],
         "temperature": 0.3,
-        "max_tokens": 512
+        "max_tokens": 1024
     });
 
     let client = reqwest::Client::new();
@@ -402,15 +402,33 @@ fn mime_type_for_path(path: &str) -> &'static str {
 }
 
 fn score_prompt() -> &'static str {
-    r#"You are a professional photography critic. Rate this image on a scale of 0-100 based on:
+    r#"You are a professional photography critic. Evaluate this photo on a 0-100 scale.
+
+Assess:
 - Composition and framing
 - Lighting and exposure
 - Color harmony
-- Subject matter and interest
+- Subject clarity
 - Technical quality
+- Mood and storytelling
 
-Respond with compact JSON only:
-{"score":86,"review":"2-3 sentences describing strengths and weaknesses"}"#
+Respond with compact JSON only, in Chinese for all prose:
+{
+  "score": 86,
+  "summary": "2-3 sentences with the overall judgment.",
+  "strengths": ["specific strength 1", "specific strength 2"],
+  "weaknesses": ["specific weakness 1"],
+  "suggestions": ["actionable suggestion 1", "actionable suggestion 2"],
+  "dimension_scores": [
+    {"name": "构图", "score": 82, "note": "short note"},
+    {"name": "光线", "score": 88, "note": "short note"},
+    {"name": "色彩", "score": 84, "note": "short note"},
+    {"name": "主体", "score": 80, "note": "short note"},
+    {"name": "技术", "score": 86, "note": "short note"},
+    {"name": "叙事", "score": 78, "note": "short note"}
+  ],
+  "tags": ["自然光", "明确主体"]
+}"#
 }
 
 fn parse_score_response(text: &str) -> anyhow::Result<ScoreResult> {
@@ -440,7 +458,9 @@ fn parse_score_response(text: &str) -> anyhow::Result<ScoreResult> {
         .map(|l| l.split(':').nth(1).unwrap_or("").trim().to_string())
         .unwrap_or_default();
 
-    Ok(ScoreResult { score, review })
+    let mut result = ScoreResult::from_score_and_review(score, review);
+    result.raw_response = text.to_string();
+    Ok(result)
 }
 
 fn parse_json_score_response(text: &str) -> anyhow::Result<ScoreResult> {
@@ -457,8 +477,60 @@ fn parse_json_score_response(text: &str) -> anyhow::Result<ScoreResult> {
 
     let json: serde_json::Value = serde_json::from_str(json_text)?;
     let score = json["score"].as_f64().context("missing score")?;
-    let review = json["review"].as_str().unwrap_or("").to_string();
-    Ok(ScoreResult { score, review })
+    let summary = json["summary"]
+        .as_str()
+        .or_else(|| json["review"].as_str())
+        .unwrap_or("")
+        .to_string();
+    let review = json["review"].as_str().unwrap_or(&summary).to_string();
+
+    Ok(ScoreResult {
+        score,
+        review,
+        summary,
+        strengths: parse_string_array(&json["strengths"]),
+        weaknesses: parse_string_array(&json["weaknesses"]),
+        suggestions: parse_string_array(&json["suggestions"]),
+        dimension_scores: parse_dimension_scores(&json["dimension_scores"]),
+        tags: parse_string_array(&json["tags"]),
+        raw_response: text.to_string(),
+    })
+}
+
+fn parse_string_array(value: &serde_json::Value) -> Vec<String> {
+    value
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.as_str().map(|s| s.trim().to_string()))
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn parse_dimension_scores(value: &serde_json::Value) -> Vec<DimensionScore> {
+    value
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| {
+                    let name = item["name"].as_str()?.trim().to_string();
+                    if name.is_empty() {
+                        return None;
+                    }
+                    let score = item["score"].as_f64()?;
+                    let note = item["note"]
+                        .as_str()
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty());
+                    Some(DimensionScore { name, score, note })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn model_or_default<'a>(model: &'a str, provider: &str) -> &'a str {

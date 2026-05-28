@@ -33,6 +33,7 @@ pub fn run() {
             interface::commands::build_search_index,
             interface::commands::natural_language_search,
             interface::commands::export_photos,
+            interface::commands::get_library_insights,
             interface::commands::get_ai_settings,
             interface::commands::update_ai_settings,
             interface::commands::check_local_model,

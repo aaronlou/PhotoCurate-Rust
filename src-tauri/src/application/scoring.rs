@@ -1,10 +1,13 @@
 use crate::application::ports::{
-    PhotoRepository, ProgressReporter, ScoringService, SettingsRepository,
+    PhotoEvaluationRepository, PhotoRepository, ProgressReporter, ScoringService,
+    SettingsRepository,
 };
-use crate::domain::models::{AiSettings, IndexingProgressEvent};
+use crate::domain::models::{AiSettings, IndexingProgressEvent, PhotoEvaluation};
 use crate::error::{PhotoCurateError, Result};
 use crate::infrastructure;
 use sqlx::{Pool, Sqlite};
+
+const PHOTO_EVALUATION_PROMPT_VERSION: &str = "photo-evaluation-v1";
 
 pub async fn score_photos(
     db: &Pool<Sqlite>,
@@ -14,12 +17,15 @@ pub async fn score_photos(
 ) -> Result<()> {
     let settings_repo = infrastructure::repositories::SqliteSettingsRepository::new(db.clone());
     let photo_repo = infrastructure::repositories::SqlitePhotoRepository::new(db.clone());
+    let evaluation_repo =
+        infrastructure::repositories::SqlitePhotoEvaluationRepository::new(db.clone());
     let ai = infrastructure::adapters::AiGateway::new(None);
     let progress = infrastructure::adapters::TauriProgressReporter::new(app_handle.clone());
 
     score_photos_with(
         &settings_repo,
         &photo_repo,
+        &evaluation_repo,
         &ai,
         &progress,
         photo_ids,
@@ -31,6 +37,7 @@ pub async fn score_photos(
 pub async fn score_photos_with(
     settings: &impl SettingsRepository,
     photos: &impl PhotoRepository,
+    evaluations: &impl PhotoEvaluationRepository,
     scorer: &impl ScoringService,
     progress: &impl ProgressReporter,
     photo_ids: Vec<String>,
@@ -56,8 +63,19 @@ pub async fn score_photos_with(
         if let Some(photo) = photo {
             match scorer.score_image(&ai_settings, &photo.file_path).await {
                 Ok(result) => {
-                    photos.update_score(photo_id, result.score).await?;
-                    tracing::info!("Scored {} = {}", photo.file_name, result.score);
+                    let evaluation = PhotoEvaluation::from_score_result(
+                        photo_id.clone(),
+                        result,
+                        ai_settings.scoring_provider.clone(),
+                        ai_settings.scoring_model.clone(),
+                        PHOTO_EVALUATION_PROMPT_VERSION.to_string(),
+                    );
+                    evaluations.save(&evaluation).await?;
+                    tracing::info!(
+                        "Evaluated {} = {}",
+                        photo.file_name,
+                        evaluation.overall_score
+                    );
                 }
                 Err(e) => {
                     tracing::warn!("Scoring failed for {}: {}", photo.file_name, e);

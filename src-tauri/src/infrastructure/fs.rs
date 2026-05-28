@@ -76,6 +76,7 @@ pub async fn scan_directory(dir_path: &str, dir_id: &str) -> Result<Vec<Photo>> 
             directory_id: Some(dir_id.to_string()),
             has_been_exported: false,
             export_date: None,
+            latest_evaluation: None,
         };
 
         photos.push(photo);

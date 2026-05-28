@@ -67,8 +67,14 @@ export default function ScoringView() {
   const [scoreError, setScoreError] = useState<string | null>(null);
   const [scoreNotice, setScoreNotice] = useState<string | null>(null);
   const [allowSavedKeyRead, setAllowSavedKeyRead] = useState(false);
+  const [scoringScope, setScoringScope] = useState<"missing_evaluation" | "all">("missing_evaluation");
 
-  const unscoredCount = photos.filter((p) => !p.has_been_scored).length;
+  const photosMissingEvaluation = photos.filter((p) => !p.latest_evaluation);
+  const pendingEvaluationCount = photosMissingEvaluation.length;
+  const legacyScoreOnlyCount = photos.filter((p) => p.has_been_scored && !p.latest_evaluation).length;
+  const evaluatedCount = photos.filter((p) => p.latest_evaluation).length;
+  const scoringCandidates = scoringScope === "all" ? photos : photosMissingEvaluation;
+  const scoringTargetCount = Math.min(scoringCandidates.length, 50);
   const indexedCount = photos.filter((p) => p.has_embedding).length;
 
   useEffect(() => {
@@ -100,8 +106,8 @@ export default function ScoringView() {
   };
 
   const handleStartScoring = async () => {
-    const unscored = photos.filter((p) => !p.has_been_scored).slice(0, 50);
-    if (unscored.length === 0) return;
+    const targets = (scoringScope === "all" ? photos : photos.filter((p) => !p.latest_evaluation)).slice(0, 50);
+    if (targets.length === 0) return;
 
     let allowKeychainRead = false;
     if (hasScoringKey) {
@@ -117,10 +123,10 @@ export default function ScoringView() {
     setScoreError(null);
     setScoreNotice(null);
     setIsScoring(true);
-    setScoreProgress({ current: 0, total: unscored.length });
+    setScoreProgress({ current: 0, total: targets.length });
 
     try {
-      await scorePhotos(unscored.map((p) => p.id), allowKeychainRead);
+      await scorePhotos(targets.map((p) => p.id), allowKeychainRead);
       await refreshPhotos(photoSortOrder);
     } catch (e) {
       setScoreError(typeof e === "string" ? e : String(e));
@@ -329,24 +335,57 @@ export default function ScoringView() {
       )}
 
       <div className="bg-white rounded-lg border border-gray-200 p-6 mb-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-5">
           <div>
             <p className="text-sm text-gray-600">
-              待评分照片: <span className="font-semibold text-gray-800">{unscoredCount}</span> 张
+              待生成评价: <span className="font-semibold text-gray-800">{pendingEvaluationCount}</span> 张
             </p>
             <p className="text-xs text-gray-400 mt-1">
-              已评分: {photos.filter((p) => p.has_been_scored).length} 张
+              仅有旧评分: {legacyScoreOnlyCount} 张
+              <span className="mx-1 text-gray-300">/</span>
+              已有评价: {evaluatedCount} 张
             </p>
           </div>
-          <button
-            onClick={handleStartScoring}
-            disabled={isScoring || unscoredCount === 0}
-            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Play size={16} />
-            {isScoring ? "评分中..." : "开始评分"}
-          </button>
+          <div className="flex items-center gap-3">
+            <div className="flex rounded-md border border-gray-200 bg-gray-50 p-0.5">
+              <button
+                type="button"
+                onClick={() => setScoringScope("missing_evaluation")}
+                className={`px-3 py-1.5 text-xs font-medium rounded ${
+                  scoringScope === "missing_evaluation"
+                    ? "bg-white text-blue-600 shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                补全缺失
+              </button>
+              <button
+                type="button"
+                onClick={() => setScoringScope("all")}
+                className={`px-3 py-1.5 text-xs font-medium rounded ${
+                  scoringScope === "all"
+                    ? "bg-white text-blue-600 shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                重新评价全部
+              </button>
+            </div>
+            <button
+              onClick={handleStartScoring}
+              disabled={isScoring || scoringTargetCount === 0}
+              className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Play size={16} />
+              {isScoring ? "评价中..." : scoringScope === "all" ? "重新评价" : "生成评价"}
+            </button>
+          </div>
         </div>
+
+        <p className="mt-3 text-xs text-gray-400">
+          本次队列: {scoringTargetCount} 张
+          {scoringScope === "all" && "，会重新调用 AI 并更新评分"}
+        </p>
 
         {scoreError && (
           <div className="mt-3 flex items-center gap-1.5 text-xs text-red-500">
@@ -365,7 +404,7 @@ export default function ScoringView() {
         {isScoring && scoreProgress && (
           <div className="mt-4">
             <div className="flex justify-between text-xs text-gray-500 mb-1">
-              <span>评分进度</span>
+              <span>评价进度</span>
               <span>
                 {scoreProgress.current} / {scoreProgress.total}
               </span>

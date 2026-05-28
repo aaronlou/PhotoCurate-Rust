@@ -5,6 +5,7 @@ import {
   Star,
   Search,
   Download,
+  BarChart3,
 } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -16,6 +17,7 @@ function cn(...inputs: ClassValue[]) {
 const navItems: { key: NavItem; label: string; icon: React.ReactNode }[] = [
   { key: "library", label: "图库", icon: <Images size={18} /> },
   { key: "scoring", label: "评分", icon: <Star size={18} /> },
+  { key: "insights", label: "洞察", icon: <BarChart3 size={18} /> },
   { key: "search", label: "智能检索", icon: <Search size={18} /> },
   { key: "export", label: "精选导出", icon: <Download size={18} /> },
 ];

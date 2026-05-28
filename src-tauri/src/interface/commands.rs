@@ -1,6 +1,8 @@
 use crate::application;
 use crate::application::ports::VectorIndexStore;
-use crate::domain::models::{AiSettings, Directory, ExportResult, Photo, SearchResult};
+use crate::domain::models::{
+    AiSettings, Directory, ExportResult, LibraryInsights, Photo, SearchResult,
+};
 use crate::error::PhotoCurateError;
 use crate::AppState;
 use tauri::State;
@@ -159,6 +161,13 @@ pub async fn export_photos(
         application::export::export_photos(&state.db, photo_ids, destination, preserve_structure)
             .await,
     )
+}
+
+// ==================== Insights ====================
+
+#[tauri::command]
+pub async fn get_library_insights(state: State<'_, AppState>) -> Result<LibraryInsights, String> {
+    map_err(application::insights::get_library_insights(&state.db).await)
 }
 
 // ==================== AI Settings ====================

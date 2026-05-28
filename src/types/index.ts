@@ -23,6 +23,7 @@ export interface Photo {
   directory_id: string | null;
   has_been_exported: boolean;
   export_date: string | null;
+  latest_evaluation: PhotoEvaluation | null;
 }
 
 export interface Directory {
@@ -55,6 +56,36 @@ export type ScoringProvider = "gemini" | "qwen_vl" | "openai_compatible_vision";
 export interface ScoreResult {
   score: number;
   review: string;
+  summary: string;
+  strengths: string[];
+  weaknesses: string[];
+  suggestions: string[];
+  dimension_scores: DimensionScore[];
+  tags: string[];
+  raw_response: string;
+}
+
+export interface DimensionScore {
+  name: string;
+  score: number;
+  note: string | null;
+}
+
+export interface PhotoEvaluation {
+  id: string;
+  photo_id: string;
+  overall_score: number;
+  summary: string;
+  strengths: string[];
+  weaknesses: string[];
+  suggestions: string[];
+  dimension_scores: DimensionScore[];
+  tags: string[];
+  model_provider: string;
+  model_name: string;
+  prompt_version: string;
+  raw_response: string | null;
+  created_at: string;
 }
 
 export interface SearchResult {
@@ -74,6 +105,57 @@ export interface ExportResult {
   failed_photos: ExportFailure[];
 }
 
+export interface LibraryInsights {
+  total_photos: number;
+  evaluated_photos: number;
+  score_only_photos: number;
+  average_score: number | null;
+  median_score: number | null;
+  high_score_count: number;
+  high_score_rate: number;
+  score_distribution: ScoreBucket[];
+  dimension_averages: DimensionInsight[];
+  top_strengths: TextInsight[];
+  recurring_weaknesses: TextInsight[];
+  suggested_practices: TextInsight[];
+  top_tags: TextInsight[];
+  top_photos: InsightPhoto[];
+  recent_trend: ScoreTrend | null;
+  coach_notes: string[];
+}
+
+export interface ScoreBucket {
+  label: string;
+  min: number;
+  max: number;
+  count: number;
+}
+
+export interface DimensionInsight {
+  name: string;
+  average_score: number;
+  count: number;
+}
+
+export interface TextInsight {
+  label: string;
+  count: number;
+}
+
+export interface InsightPhoto {
+  id: string;
+  file_name: string;
+  score: number;
+  summary: string;
+}
+
+export interface ScoreTrend {
+  earlier_average: number;
+  recent_average: number;
+  delta: number;
+  recent_count: number;
+}
+
 export interface IndexingProgress {
   current: number;
   total: number;
@@ -81,5 +163,5 @@ export interface IndexingProgress {
 }
 
 export type ViewMode = "grid" | "list";
-export type NavItem = "library" | "scoring" | "search" | "export";
+export type NavItem = "library" | "scoring" | "insights" | "search" | "export";
 export type PhotoSortOrder = "date_desc" | "score_desc" | "score_asc";

@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useAppStore } from "@/stores/useAppStore";
 import { pickDirectory } from "@/hooks/useInvoke";
-import { FolderPlus, LayoutGrid, List, Image as ImageIcon, ArrowDownAZ, ArrowUpAZ, CalendarDays, ChevronDown } from "lucide-react";
+import { FolderPlus, LayoutGrid, List, Image as ImageIcon, ArrowDownAZ, ArrowUpAZ, CalendarDays, ChevronDown, Sparkles } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import type { Photo } from "@/types";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -167,61 +168,25 @@ export default function LibraryView() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto p-4 scrollbar-thin">
-        {viewMode === "grid" ? (
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
-            {photos.map((photo) => (
-              <div
-                key={photo.id}
-                onClick={() => setSelectedPhoto(photo)}
-                className={cn(
-                  "relative aspect-square rounded-lg overflow-hidden cursor-pointer border-2 transition-all",
-                  selectedPhoto?.id === photo.id
-                    ? "border-blue-500 ring-2 ring-blue-100"
-                    : "border-transparent hover:border-gray-300"
-                )}
-              >
-                {photo.thumbnail_path ? (
-                  <img
-                    src={convertFileSrc(photo.thumbnail_path)}
-                    alt={photo.file_name}
-                    className="w-full h-full object-cover"
-                    loading="lazy"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = "none";
-                    }}
-                  />
-                ) : (
-                  <div className="w-full h-full bg-gray-100 flex items-center justify-center">
-                    <ImageIcon size={20} className="text-gray-300" />
-                  </div>
-                )}
-                {photo.aesthetic_score !== null && (
-                  <div className="absolute top-1.5 right-1.5 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
-                    {Math.round(photo.aesthetic_score)}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="space-y-1">
-            {photos.map((photo) => (
-              <div
-                key={photo.id}
-                onClick={() => setSelectedPhoto(photo)}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer transition-colors",
-                  selectedPhoto?.id === photo.id
-                    ? "bg-blue-50"
-                    : "hover:bg-gray-50"
-                )}
-              >
-                <div className="w-10 h-10 bg-gray-100 rounded-md flex items-center justify-center flex-shrink-0 overflow-hidden">
+      <div className="flex-1 min-h-0 flex">
+        <div className="flex-1 overflow-auto p-4 scrollbar-thin">
+          {viewMode === "grid" ? (
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
+              {photos.map((photo) => (
+                <div
+                  key={photo.id}
+                  onClick={() => setSelectedPhoto(photo)}
+                  className={cn(
+                    "relative aspect-square rounded-lg overflow-hidden cursor-pointer border-2 transition-all",
+                    selectedPhoto?.id === photo.id
+                      ? "border-blue-500 ring-2 ring-blue-100"
+                      : "border-transparent hover:border-gray-300"
+                  )}
+                >
                   {photo.thumbnail_path ? (
                     <img
                       src={convertFileSrc(photo.thumbnail_path)}
-                      alt=""
+                      alt={photo.file_name}
                       className="w-full h-full object-cover"
                       loading="lazy"
                       onError={(e) => {
@@ -229,23 +194,176 @@ export default function LibraryView() {
                       }}
                     />
                   ) : (
-                    <ImageIcon size={16} className="text-gray-300" />
+                    <div className="w-full h-full bg-gray-100 flex items-center justify-center">
+                      <ImageIcon size={20} className="text-gray-300" />
+                    </div>
+                  )}
+                  {photo.aesthetic_score !== null && (
+                    <div className="absolute top-1.5 right-1.5 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
+                      {Math.round(photo.aesthetic_score)}
+                    </div>
                   )}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-gray-800 truncate">{photo.file_name}</p>
-                  <p className="text-[11px] text-gray-400 truncate">{photo.file_path}</p>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {photos.map((photo) => (
+                <div
+                  key={photo.id}
+                  onClick={() => setSelectedPhoto(photo)}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer transition-colors",
+                    selectedPhoto?.id === photo.id
+                      ? "bg-blue-50"
+                      : "hover:bg-gray-50"
+                  )}
+                >
+                  <div className="w-10 h-10 bg-gray-100 rounded-md flex items-center justify-center flex-shrink-0 overflow-hidden">
+                    {photo.thumbnail_path ? (
+                      <img
+                        src={convertFileSrc(photo.thumbnail_path)}
+                        alt=""
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = "none";
+                        }}
+                      />
+                    ) : (
+                      <ImageIcon size={16} className="text-gray-300" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-gray-800 truncate">{photo.file_name}</p>
+                    <p className="text-[11px] text-gray-400 truncate">{photo.file_path}</p>
+                  </div>
+                  {photo.aesthetic_score !== null && (
+                    <span className="text-xs font-medium text-amber-600">
+                      {Math.round(photo.aesthetic_score)}
+                    </span>
+                  )}
                 </div>
-                {photo.aesthetic_score !== null && (
-                  <span className="text-xs font-medium text-amber-600">
-                    {Math.round(photo.aesthetic_score)}
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
+        </div>
+        {selectedPhoto && (
+          <EvaluationPanel photo={selectedPhoto} />
         )}
       </div>
     </div>
+  );
+}
+
+function EvaluationPanel({ photo }: { photo: Photo }) {
+  const evaluation = photo.latest_evaluation;
+
+  return (
+    <aside className="w-[340px] border-l border-gray-100 bg-gray-50/60 overflow-auto p-4">
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-gray-800 truncate">{photo.file_name}</p>
+          <p className="text-[11px] text-gray-400 truncate">{photo.file_path}</p>
+        </div>
+        {photo.aesthetic_score !== null && (
+          <div className="shrink-0 rounded-md bg-amber-100 px-2 py-1 text-sm font-semibold text-amber-700">
+            {Math.round(photo.aesthetic_score)}
+          </div>
+        )}
+      </div>
+
+      {!evaluation ? (
+        <div className="rounded-lg border border-dashed border-gray-200 bg-white p-4 text-sm text-gray-500">
+          这张照片还没有 AI 评价。可以在评分页批量生成评分和点评。
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <section className="rounded-lg border border-gray-200 bg-white p-4">
+            <div className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-800">
+              <Sparkles size={15} className="text-blue-500" />
+              AI 评价
+            </div>
+            <p className="text-sm leading-6 text-gray-600">{evaluation.summary}</p>
+            <p className="mt-3 text-[11px] text-gray-400">
+              {evaluation.model_provider} / {evaluation.model_name}
+            </p>
+          </section>
+
+          <EvaluationList title="优点" items={evaluation.strengths} tone="green" />
+          <EvaluationList title="不足" items={evaluation.weaknesses} tone="amber" />
+          <EvaluationList title="建议" items={evaluation.suggestions} tone="blue" />
+
+          {evaluation.dimension_scores.length > 0 && (
+            <section className="rounded-lg border border-gray-200 bg-white p-4">
+              <h3 className="mb-3 text-sm font-medium text-gray-800">维度评分</h3>
+              <div className="space-y-3">
+                {evaluation.dimension_scores.map((dimension) => (
+                  <div key={dimension.name}>
+                    <div className="mb-1 flex items-center justify-between text-xs">
+                      <span className="text-gray-600">{dimension.name}</span>
+                      <span className="font-medium text-gray-800">{Math.round(dimension.score)}</span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-gray-100">
+                      <div
+                        className="h-full rounded-full bg-blue-500"
+                        style={{ width: `${Math.max(0, Math.min(100, dimension.score))}%` }}
+                      />
+                    </div>
+                    {dimension.note && (
+                      <p className="mt-1 text-[11px] leading-4 text-gray-400">{dimension.note}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {evaluation.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {evaluation.tags.map((tag) => (
+                <span key={tag} className="rounded bg-gray-100 px-2 py-1 text-[11px] text-gray-500">
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </aside>
+  );
+}
+
+function EvaluationList({
+  title,
+  items,
+  tone,
+}: {
+  title: string;
+  items: string[];
+  tone: "green" | "amber" | "blue";
+}) {
+  if (items.length === 0) {
+    return null;
+  }
+
+  const toneClass =
+    tone === "green"
+      ? "border-green-200 bg-green-50 text-green-800"
+      : tone === "amber"
+      ? "border-amber-200 bg-amber-50 text-amber-800"
+      : "border-blue-200 bg-blue-50 text-blue-800";
+
+  return (
+    <section className={cn("rounded-lg border p-4", toneClass)}>
+      <h3 className="mb-2 text-sm font-medium">{title}</h3>
+      <ul className="space-y-1.5">
+        {items.map((item) => (
+          <li key={item} className="text-xs leading-5">
+            {item}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

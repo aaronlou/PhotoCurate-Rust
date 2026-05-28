@@ -49,15 +49,22 @@ interface AppState {
   setSearchResults: (photos: Photo[]) => void;
 }
 
+function syncSelectedPhoto(photos: Photo[], selectedPhoto: Photo | null) {
+  return {
+    photos,
+    selectedPhoto: selectedPhoto ? photos.find((photo) => photo.id === selectedPhoto.id) ?? null : null,
+  };
+}
+
 export const useAppStore = create<AppState>((set, get) => ({
   currentView: "library",
   setCurrentView: (view) => set({ currentView: view }),
 
   photos: [],
-  setPhotos: (photos) => set({ photos }),
+  setPhotos: (photos) => set((state) => syncSelectedPhoto(photos, state.selectedPhoto)),
   refreshPhotos: async (sortOrder) => {
     const photos = await getPhotos(sortOrder ?? get().photoSortOrder);
-    set({ photos });
+    set((state) => syncSelectedPhoto(photos, state.selectedPhoto));
     return photos;
   },
   selectedPhoto: null,
@@ -75,7 +82,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       getDirectories(),
       getPhotos(get().photoSortOrder),
     ]);
-    set({ directories, photos });
+    set((state) => ({ directories, ...syncSelectedPhoto(photos, state.selectedPhoto) }));
   },
   addDirectoryAndRefresh: async (path) => {
     const directory = await addDirectory(path);
@@ -83,7 +90,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       getDirectories(),
       getPhotos(get().photoSortOrder),
     ]);
-    set({ directories, photos });
+    set((state) => ({ directories, ...syncSelectedPhoto(photos, state.selectedPhoto) }));
     return directory;
   },
 
@@ -95,7 +102,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   changePhotoSortOrder: async (order) => {
     set({ photoSortOrder: order });
     const photos = await getPhotos(order);
-    set({ photos });
+    set((state) => syncSelectedPhoto(photos, state.selectedPhoto));
   },
 
   aiSettings: null,

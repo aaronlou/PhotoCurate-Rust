@@ -76,6 +76,31 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<()> {
 
     sqlx::query(
         r#"
+        CREATE TABLE IF NOT EXISTS photo_evaluations (
+            id TEXT PRIMARY KEY,
+            photo_id TEXT NOT NULL REFERENCES photos(id) ON DELETE CASCADE,
+            overall_score REAL NOT NULL,
+            summary TEXT NOT NULL,
+            strengths_json TEXT NOT NULL DEFAULT '[]',
+            weaknesses_json TEXT NOT NULL DEFAULT '[]',
+            suggestions_json TEXT NOT NULL DEFAULT '[]',
+            dimension_scores_json TEXT NOT NULL DEFAULT '[]',
+            tags_json TEXT NOT NULL DEFAULT '[]',
+            model_provider TEXT NOT NULL,
+            model_name TEXT NOT NULL,
+            prompt_version TEXT NOT NULL,
+            raw_response TEXT,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_photo_evaluations_photo_created
+            ON photo_evaluations(photo_id, created_at DESC);
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
         CREATE TABLE IF NOT EXISTS vector_entries (
             id TEXT PRIMARY KEY,
             photo_id TEXT NOT NULL UNIQUE REFERENCES photos(id) ON DELETE CASCADE,
