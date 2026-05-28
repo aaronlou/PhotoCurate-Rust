@@ -1,5 +1,5 @@
 use crate::application::ports::{
-    DirectoryRepository, PhotoRepository, SettingsRepository, VectorRepository,
+    DirectoryRepository, EmbeddingRepository, PhotoRepository, SettingsRepository, VectorRepository,
 };
 use crate::domain::models::{AiSettings, Directory, Photo, PhotoSortOrder};
 use crate::error::Result;
@@ -515,8 +515,11 @@ impl SqliteVectorRepository {
 
     pub async fn save(&self, id: &str, photo_id: &str, vector_json: &str) -> Result<()> {
         sqlx::query(
-            r#"INSERT OR REPLACE INTO vector_entries (id, photo_id, vector, created_at)
-               VALUES (?1, ?2, ?3, ?4)"#,
+            r#"INSERT INTO vector_entries (id, photo_id, vector, created_at)
+               VALUES (?1, ?2, ?3, ?4)
+               ON CONFLICT(photo_id) DO UPDATE SET
+                   vector = excluded.vector,
+                   created_at = excluded.created_at"#,
         )
         .bind(id)
         .bind(photo_id)
@@ -531,6 +534,89 @@ impl SqliteVectorRepository {
         sqlx::query("DELETE FROM vector_entries")
             .execute(&self.db)
             .await?;
+        Ok(())
+    }
+}
+
+pub struct SqliteEmbeddingRepository {
+    db: Pool<Sqlite>,
+}
+
+impl SqliteEmbeddingRepository {
+    pub fn new(db: Pool<Sqlite>) -> Self {
+        Self { db }
+    }
+}
+
+impl EmbeddingRepository for SqliteEmbeddingRepository {
+    async fn upsert_embedding(
+        &self,
+        photo_id: &str,
+        vector_json: &str,
+        version: i32,
+    ) -> Result<()> {
+        let mut tx = self.db.begin().await?;
+
+        sqlx::query(
+            r#"INSERT INTO vector_entries (id, photo_id, vector, created_at)
+               VALUES (?1, ?2, ?3, ?4)
+               ON CONFLICT(photo_id) DO UPDATE SET
+                   vector = excluded.vector,
+                   created_at = excluded.created_at"#,
+        )
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(photo_id)
+        .bind(vector_json)
+        .bind(chrono::Utc::now())
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query("UPDATE photos SET has_embedding = 1, embedding_version = ?1 WHERE id = ?2")
+            .bind(version)
+            .bind(photo_id)
+            .execute(&mut *tx)
+            .await?;
+
+        tx.commit().await?;
+        Ok(())
+    }
+
+    async fn replace_all_embeddings(
+        &self,
+        embeddings: &[(String, String)],
+        version: i32,
+    ) -> Result<()> {
+        let mut tx = self.db.begin().await?;
+
+        sqlx::query("DELETE FROM vector_entries")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("UPDATE photos SET has_embedding = 0, embedding_version = NULL")
+            .execute(&mut *tx)
+            .await?;
+
+        for (photo_id, vector_json) in embeddings {
+            sqlx::query(
+                r#"INSERT INTO vector_entries (id, photo_id, vector, created_at)
+                   VALUES (?1, ?2, ?3, ?4)"#,
+            )
+            .bind(uuid::Uuid::new_v4().to_string())
+            .bind(photo_id)
+            .bind(vector_json)
+            .bind(chrono::Utc::now())
+            .execute(&mut *tx)
+            .await?;
+
+            sqlx::query(
+                "UPDATE photos SET has_embedding = 1, embedding_version = ?1 WHERE id = ?2",
+            )
+            .bind(version)
+            .bind(photo_id)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        tx.commit().await?;
         Ok(())
     }
 }

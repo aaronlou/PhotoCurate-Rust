@@ -1,6 +1,6 @@
 use crate::application::ports::{
-    EmbeddingService, PhotoRepository, ProgressReporter, SettingsRepository, VectorIndexStore,
-    VectorRepository,
+    EmbeddingRepository, EmbeddingService, PhotoRepository, ProgressReporter, SettingsRepository,
+    VectorIndexStore, VectorRepository,
 };
 use crate::domain::models::{IndexingProgressEvent, Photo, SearchResult};
 use crate::error::{PhotoCurateError, Result};
@@ -23,6 +23,7 @@ pub async fn build_index(
     let settings_repo = infrastructure::repositories::SqliteSettingsRepository::new(db.clone());
     let photo_repo = infrastructure::repositories::SqlitePhotoRepository::new(db.clone());
     let vector_repo = infrastructure::repositories::SqliteVectorRepository::new(db.clone());
+    let embedding_repo = infrastructure::repositories::SqliteEmbeddingRepository::new(db.clone());
     let embeddings = infrastructure::adapters::AiGateway::new(chinese_clip.clone());
     let progress = crate::application::ports::NoopProgressReporter;
 
@@ -30,6 +31,7 @@ pub async fn build_index(
         &settings_repo,
         &photo_repo,
         &vector_repo,
+        &embedding_repo,
         vector_index,
         &embeddings,
         &progress,
@@ -43,6 +45,7 @@ pub async fn build_index_with(
     settings: &impl SettingsRepository,
     photos: &impl PhotoRepository,
     vectors: &impl VectorRepository,
+    embedding_store: &impl EmbeddingRepository,
     index: &impl VectorIndexStore,
     embeddings: &impl EmbeddingService,
     progress: &impl ProgressReporter,
@@ -54,6 +57,7 @@ pub async fn build_index_with(
         settings,
         photos,
         vectors,
+        embedding_store,
         index,
         embeddings,
         progress,
@@ -74,6 +78,7 @@ pub async fn auto_index_unindexed(
     let settings_repo = infrastructure::repositories::SqliteSettingsRepository::new(db.clone());
     let photo_repo = infrastructure::repositories::SqlitePhotoRepository::new(db.clone());
     let vector_repo = infrastructure::repositories::SqliteVectorRepository::new(db.clone());
+    let embedding_repo = infrastructure::repositories::SqliteEmbeddingRepository::new(db.clone());
     let embeddings = infrastructure::adapters::AiGateway::new(chinese_clip.clone());
     let progress = infrastructure::adapters::TauriProgressReporter::new(app_handle.clone());
 
@@ -81,6 +86,7 @@ pub async fn auto_index_unindexed(
         &settings_repo,
         &photo_repo,
         &vector_repo,
+        &embedding_repo,
         vector_index,
         &embeddings,
         &progress,
@@ -93,6 +99,7 @@ pub async fn auto_index_unindexed_with(
     settings: &impl SettingsRepository,
     photos: &impl PhotoRepository,
     vectors: &impl VectorRepository,
+    embedding_store: &impl EmbeddingRepository,
     index: &impl VectorIndexStore,
     embeddings: &impl EmbeddingService,
     progress: &impl ProgressReporter,
@@ -112,6 +119,7 @@ pub async fn auto_index_unindexed_with(
         settings,
         photos,
         vectors,
+        embedding_store,
         index,
         embeddings,
         progress,
@@ -133,6 +141,7 @@ pub async fn rebuild_all_index(
     let settings_repo = infrastructure::repositories::SqliteSettingsRepository::new(db.clone());
     let photo_repo = infrastructure::repositories::SqlitePhotoRepository::new(db.clone());
     let vector_repo = infrastructure::repositories::SqliteVectorRepository::new(db.clone());
+    let embedding_repo = infrastructure::repositories::SqliteEmbeddingRepository::new(db.clone());
     let embeddings = infrastructure::adapters::AiGateway::new(chinese_clip.clone());
     let progress = infrastructure::adapters::TauriProgressReporter::new(app_handle.clone());
 
@@ -140,6 +149,7 @@ pub async fn rebuild_all_index(
         &settings_repo,
         &photo_repo,
         &vector_repo,
+        &embedding_repo,
         vector_index,
         &embeddings,
         &progress,
@@ -152,32 +162,59 @@ pub async fn rebuild_all_index_with(
     settings: &impl SettingsRepository,
     photos: &impl PhotoRepository,
     vectors: &impl VectorRepository,
+    embedding_store: &impl EmbeddingRepository,
     index: &impl VectorIndexStore,
     embeddings: &impl EmbeddingService,
     progress: &impl ProgressReporter,
     allow_keychain_read: bool,
 ) -> Result<usize> {
-    index.clear().await;
-    vectors.delete_all().await?;
-    photos.reset_all_embeddings().await?;
-
     let all_photos = photos.find_all(None).await?;
     if all_photos.is_empty() {
+        index.clear().await;
+        vectors.delete_all().await?;
+        photos.reset_all_embeddings().await?;
         return Ok(0);
     }
 
-    index_photos(
+    let generated = generate_embeddings(
         settings,
-        photos,
-        vectors,
-        index,
         embeddings,
         progress,
-        all_photos,
+        &all_photos,
         true,
         allow_keychain_read,
     )
-    .await
+    .await?;
+
+    if generated.is_empty() {
+        emit_indexing_failed(progress, all_photos.len(), true);
+        return Err(PhotoCurateError::Other(
+            "failed to generate any embeddings; existing index was left unchanged".into(),
+        ));
+    }
+
+    let persisted: Vec<(String, String)> = generated
+        .iter()
+        .map(|entry| (entry.photo.id.clone(), entry.vector_json.clone()))
+        .collect();
+
+    if let Err(e) = embedding_store
+        .replace_all_embeddings(&persisted, EMBEDDING_VERSION)
+        .await
+    {
+        emit_indexing_failed(progress, all_photos.len(), true);
+        return Err(e);
+    }
+
+    index.clear().await;
+    for entry in &generated {
+        index
+            .add(entry.photo.id.clone(), entry.embedding.clone())
+            .await;
+    }
+
+    emit_indexing_complete(progress, all_photos.len(), true);
+    Ok(generated.len())
 }
 
 pub async fn natural_language_search(
@@ -227,30 +264,20 @@ pub async fn natural_language_search_with(
     Ok(search_results)
 }
 
-async fn find_photos_by_ids(
-    photos: &impl PhotoRepository,
-    photo_ids: Vec<String>,
-) -> Result<Vec<Photo>> {
-    let mut selected = Vec::new();
-    for photo_id in photo_ids {
-        if let Some(photo) = photos.find_by_id(&photo_id).await? {
-            selected.push(photo);
-        }
-    }
-    Ok(selected)
+struct GeneratedEmbedding {
+    photo: Photo,
+    embedding: Vec<f64>,
+    vector_json: String,
 }
 
-async fn index_photos(
+async fn generate_embeddings(
     settings_repo: &impl SettingsRepository,
-    photos: &impl PhotoRepository,
-    vectors: &impl VectorRepository,
-    index: &impl VectorIndexStore,
     embeddings: &impl EmbeddingService,
     progress: &impl ProgressReporter,
-    photos_to_index: Vec<Photo>,
+    photos_to_index: &[Photo],
     emit_progress: bool,
     allow_keychain_read: bool,
-) -> Result<usize> {
+) -> Result<Vec<GeneratedEmbedding>> {
     let api_key = resolve_embedding_api_key(settings_repo, embeddings, allow_keychain_read).await?;
 
     let total = photos_to_index.len();
@@ -262,16 +289,17 @@ async fn index_photos(
         });
     }
 
-    if total == 0 {
-        return Ok(0);
-    }
-
-    let mut indexed_count = 0usize;
+    let mut generated = Vec::new();
     for (i, photo) in photos_to_index.iter().enumerate() {
-        match index_photo(&api_key, photo, photos, vectors, index, embeddings).await {
-            Ok(()) => {
-                indexed_count += 1;
-                tracing::info!("Indexed {}/{}: {}", i + 1, total, photo.file_name);
+        match generate_embedding(&api_key, photo, embeddings).await {
+            Ok(entry) => {
+                tracing::info!(
+                    "Generated embedding {}/{}: {}",
+                    i + 1,
+                    total,
+                    photo.file_name
+                );
+                generated.push(entry);
             }
             Err(e) => {
                 tracing::warn!("Embedding failed for {}: {}", photo.file_name, e);
@@ -287,38 +315,84 @@ async fn index_photos(
         }
     }
 
-    if emit_progress {
-        progress.indexing_progress(IndexingProgressEvent {
-            current: total,
-            total,
-            status: "complete".into(),
-        });
-    }
-
-    Ok(indexed_count)
+    Ok(generated)
 }
 
-async fn index_photo(
+async fn generate_embedding(
     api_key: &str,
     photo: &Photo,
-    photos: &impl PhotoRepository,
-    vectors: &impl VectorRepository,
-    index: &impl VectorIndexStore,
     embeddings: &impl EmbeddingService,
-) -> Result<()> {
+) -> Result<GeneratedEmbedding> {
     let embedding = embeddings.embed_image(api_key, &photo.file_path).await?;
     let vector_json = serde_json::to_string(&embedding)
         .map_err(|e| PhotoCurateError::InvalidData(e.to_string()))?;
 
-    vectors
-        .save(&uuid::Uuid::new_v4().to_string(), &photo.id, &vector_json)
-        .await?;
-    photos
-        .update_embedding(&photo.id, EMBEDDING_VERSION)
-        .await?;
-    index.add(photo.id.clone(), embedding).await;
+    Ok(GeneratedEmbedding {
+        photo: photo.clone(),
+        embedding,
+        vector_json,
+    })
+}
 
-    Ok(())
+async fn index_photos(
+    settings_repo: &impl SettingsRepository,
+    _photos: &impl PhotoRepository,
+    _vectors: &impl VectorRepository,
+    embedding_store: &impl EmbeddingRepository,
+    index: &impl VectorIndexStore,
+    embeddings: &impl EmbeddingService,
+    progress: &impl ProgressReporter,
+    photos_to_index: Vec<Photo>,
+    emit_progress: bool,
+    allow_keychain_read: bool,
+) -> Result<usize> {
+    let generated = generate_embeddings(
+        settings_repo,
+        embeddings,
+        progress,
+        &photos_to_index,
+        emit_progress,
+        allow_keychain_read,
+    )
+    .await?;
+
+    let mut indexed_count = 0usize;
+    for entry in &generated {
+        match embedding_store
+            .upsert_embedding(&entry.photo.id, &entry.vector_json, EMBEDDING_VERSION)
+            .await
+        {
+            Ok(()) => {
+                index
+                    .add(entry.photo.id.clone(), entry.embedding.clone())
+                    .await;
+                indexed_count += 1;
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to persist embedding for {}: {}",
+                    entry.photo.file_name,
+                    e
+                );
+            }
+        }
+    }
+
+    emit_indexing_complete(progress, photos_to_index.len(), emit_progress);
+    Ok(indexed_count)
+}
+
+async fn find_photos_by_ids(
+    photos: &impl PhotoRepository,
+    photo_ids: Vec<String>,
+) -> Result<Vec<Photo>> {
+    let mut selected = Vec::new();
+    for photo_id in photo_ids {
+        if let Some(photo) = photos.find_by_id(&photo_id).await? {
+            selected.push(photo);
+        }
+    }
+    Ok(selected)
 }
 
 async fn resolve_embedding_api_key(
@@ -341,4 +415,24 @@ async fn resolve_embedding_api_key(
 
 fn automatic_embedding_unavailable(embeddings: &impl EmbeddingService) -> bool {
     !embeddings.has_local_model()
+}
+
+fn emit_indexing_complete(progress: &impl ProgressReporter, total: usize, emit_progress: bool) {
+    if emit_progress {
+        progress.indexing_progress(IndexingProgressEvent {
+            current: total,
+            total,
+            status: "complete".into(),
+        });
+    }
+}
+
+fn emit_indexing_failed(progress: &impl ProgressReporter, total: usize, emit_progress: bool) {
+    if emit_progress {
+        progress.indexing_progress(IndexingProgressEvent {
+            current: total,
+            total,
+            status: "failed".into(),
+        });
+    }
 }

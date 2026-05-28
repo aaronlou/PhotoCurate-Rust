@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { Photo, Directory, AISettings, ViewMode, NavItem, PhotoSortOrder } from "@/types";
+import { addDirectory, getDirectories, getPhotos } from "@/hooks/useInvoke";
 
 interface AppState {
   currentView: NavItem;
@@ -7,17 +8,22 @@ interface AppState {
 
   photos: Photo[];
   setPhotos: (photos: Photo[]) => void;
+  refreshPhotos: (sortOrder?: PhotoSortOrder) => Promise<Photo[]>;
   selectedPhoto: Photo | null;
   setSelectedPhoto: (photo: Photo | null) => void;
 
   directories: Directory[];
   setDirectories: (dirs: Directory[]) => void;
+  refreshDirectories: () => Promise<Directory[]>;
+  loadLibrary: () => Promise<void>;
+  addDirectoryAndRefresh: (path: string) => Promise<Directory>;
 
   viewMode: ViewMode;
   setViewMode: (mode: ViewMode) => void;
 
   photoSortOrder: PhotoSortOrder;
   setPhotoSortOrder: (order: PhotoSortOrder) => void;
+  changePhotoSortOrder: (order: PhotoSortOrder) => Promise<void>;
 
   aiSettings: AISettings | null;
   setAiSettings: (settings: AISettings | null) => void;
@@ -43,23 +49,54 @@ interface AppState {
   setSearchResults: (photos: Photo[]) => void;
 }
 
-export const useAppStore = create<AppState>((set) => ({
+export const useAppStore = create<AppState>((set, get) => ({
   currentView: "library",
   setCurrentView: (view) => set({ currentView: view }),
 
   photos: [],
   setPhotos: (photos) => set({ photos }),
+  refreshPhotos: async (sortOrder) => {
+    const photos = await getPhotos(sortOrder ?? get().photoSortOrder);
+    set({ photos });
+    return photos;
+  },
   selectedPhoto: null,
   setSelectedPhoto: (photo) => set({ selectedPhoto: photo }),
 
   directories: [],
   setDirectories: (dirs) => set({ directories: dirs }),
+  refreshDirectories: async () => {
+    const directories = await getDirectories();
+    set({ directories });
+    return directories;
+  },
+  loadLibrary: async () => {
+    const [directories, photos] = await Promise.all([
+      getDirectories(),
+      getPhotos(get().photoSortOrder),
+    ]);
+    set({ directories, photos });
+  },
+  addDirectoryAndRefresh: async (path) => {
+    const directory = await addDirectory(path);
+    const [directories, photos] = await Promise.all([
+      getDirectories(),
+      getPhotos(get().photoSortOrder),
+    ]);
+    set({ directories, photos });
+    return directory;
+  },
 
-  viewMode: "browser",
+  viewMode: "grid",
   setViewMode: (mode) => set({ viewMode: mode }),
 
   photoSortOrder: "date_desc",
   setPhotoSortOrder: (order) => set({ photoSortOrder: order }),
+  changePhotoSortOrder: async (order) => {
+    set({ photoSortOrder: order });
+    const photos = await getPhotos(order);
+    set({ photos });
+  },
 
   aiSettings: null,
   setAiSettings: (settings) => set({ aiSettings: settings }),

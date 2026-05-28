@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAppStore } from "@/stores/useAppStore";
-import { pickDirectory, addDirectory, getPhotos, getDirectories } from "@/hooks/useInvoke";
+import { pickDirectory } from "@/hooks/useInvoke";
 import { FolderPlus, LayoutGrid, List, Image as ImageIcon, ArrowDownAZ, ArrowUpAZ, CalendarDays, ChevronDown } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -12,14 +12,13 @@ function cn(...inputs: ClassValue[]) {
 
 export default function LibraryView() {
   const photos = useAppStore((s) => s.photos);
-  const setPhotos = useAppStore((s) => s.setPhotos);
-  const setDirectories = useAppStore((s) => s.setDirectories);
   const selectedPhoto = useAppStore((s) => s.selectedPhoto);
   const setSelectedPhoto = useAppStore((s) => s.setSelectedPhoto);
   const viewMode = useAppStore((s) => s.viewMode);
   const setViewMode = useAppStore((s) => s.setViewMode);
   const photoSortOrder = useAppStore((s) => s.photoSortOrder);
-  const setPhotoSortOrder = useAppStore((s) => s.setPhotoSortOrder);
+  const addDirectoryAndRefresh = useAppStore((s) => s.addDirectoryAndRefresh);
+  const changePhotoSortOrder = useAppStore((s) => s.changePhotoSortOrder);
   const [isAdding, setIsAdding] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showSortMenu, setShowSortMenu] = useState(false);
@@ -29,18 +28,11 @@ export default function LibraryView() {
     setErrorMsg(null);
     try {
       const path = await pickDirectory();
-      console.log("[DEBUG] Picked path:", path);
       if (path) {
-        const dir = await addDirectory(path);
-        console.log("[DEBUG] Added directory:", dir);
-        const dirs = await getDirectories();
-        setDirectories(dirs);
-        const ps = await getPhotos(photoSortOrder);
-        console.log("[DEBUG] Photos loaded:", ps.length);
-        setPhotos(ps);
+        await addDirectoryAndRefresh(path);
       }
     } catch (e: any) {
-      console.error("[DEBUG] Add directory failed:", e);
+      console.error("Add directory failed:", e);
       setErrorMsg(typeof e === "string" ? e : e?.message || "添加文件夹失败，请检查控制台日志");
     } finally {
       setIsAdding(false);
@@ -48,13 +40,11 @@ export default function LibraryView() {
   };
 
   const handleSortChange = async (order: "date_desc" | "score_desc" | "score_asc") => {
-    setPhotoSortOrder(order);
     setShowSortMenu(false);
     try {
-      const ps = await getPhotos(order);
-      setPhotos(ps);
+      await changePhotoSortOrder(order);
     } catch (e: any) {
-      console.error("[DEBUG] Sort photos failed:", e);
+      console.error("Sort photos failed:", e);
     }
   };
 

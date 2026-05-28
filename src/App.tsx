@@ -5,24 +5,22 @@ import LibraryView from "@/views/LibraryView";
 import ScoringView from "@/views/ScoringView";
 import SearchView from "@/views/SearchView";
 import ExportView from "@/views/ExportView";
-import { getDirectories, getPhotos } from "@/hooks/useInvoke";
 import { listen } from "@tauri-apps/api/event";
 import type { IndexingProgress } from "@/types";
 
 function App() {
   const currentView = useAppStore((s) => s.currentView);
-  const setDirectories = useAppStore((s) => s.setDirectories);
-  const setPhotos = useAppStore((s) => s.setPhotos);
   const photoSortOrder = useAppStore((s) => s.photoSortOrder);
+  const loadLibrary = useAppStore((s) => s.loadLibrary);
+  const refreshPhotos = useAppStore((s) => s.refreshPhotos);
   const setIsIndexing = useAppStore((s) => s.setIsIndexing);
   const setIndexProgress = useAppStore((s) => s.setIndexProgress);
   const setIsScoring = useAppStore((s) => s.setIsScoring);
   const setScoreProgress = useAppStore((s) => s.setScoreProgress);
 
   useEffect(() => {
-    getDirectories().then(setDirectories).catch(console.error);
-    getPhotos(photoSortOrder).then(setPhotos).catch(console.error);
-  }, [setDirectories, setPhotos, photoSortOrder]);
+    loadLibrary().catch(console.error);
+  }, [loadLibrary, photoSortOrder]);
 
   useEffect(() => {
     const unlisten = listen<IndexingProgress>("indexing-progress", (event) => {
@@ -34,14 +32,14 @@ function App() {
         setIsIndexing(false);
         setIndexProgress(null);
         if (status === "complete") {
-          getPhotos(photoSortOrder).then(setPhotos).catch(console.error);
+          refreshPhotos(photoSortOrder).catch(console.error);
         }
       }
     });
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, [setIsIndexing, setIndexProgress, setPhotos, photoSortOrder]);
+  }, [setIsIndexing, setIndexProgress, refreshPhotos, photoSortOrder]);
 
   useEffect(() => {
     const unlisten = listen<IndexingProgress>("scoring-progress", (event) => {
@@ -51,13 +49,13 @@ function App() {
       } else if (status === "complete") {
         setIsScoring(false);
         setScoreProgress(null);
-        getPhotos(photoSortOrder).then(setPhotos).catch(console.error);
+        refreshPhotos(photoSortOrder).catch(console.error);
       }
     });
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, [setIsScoring, setScoreProgress, setPhotos, photoSortOrder]);
+  }, [setIsScoring, setScoreProgress, refreshPhotos, photoSortOrder]);
 
   return (
     <div className="flex h-screen w-screen bg-white">

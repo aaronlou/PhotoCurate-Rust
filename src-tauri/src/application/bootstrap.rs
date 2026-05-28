@@ -4,7 +4,6 @@ use crate::infrastructure;
 use sqlx::{Pool, Sqlite};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::Manager;
 use tokio::sync::Mutex;
@@ -17,7 +16,48 @@ pub struct AppState {
     pub vector_index: infrastructure::vector::SharedVectorIndex,
     pub monitors: Monitors,
     pub chinese_clip: Option<Arc<infrastructure::ai::ChineseClipService>>,
-    pub is_indexing: Arc<AtomicBool>,
+    pub indexing: Arc<IndexingCoordinator>,
+}
+
+#[derive(Debug, Default)]
+struct IndexingState {
+    running: bool,
+    pending: bool,
+}
+
+#[derive(Debug, Default)]
+pub struct IndexingCoordinator {
+    state: Mutex<IndexingState>,
+}
+
+impl IndexingCoordinator {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub async fn request_run(&self) -> bool {
+        let mut state = self.state.lock().await;
+        if state.running {
+            state.pending = true;
+            return false;
+        }
+
+        state.running = true;
+        state.pending = false;
+        true
+    }
+
+    pub async fn finish_run(&self) -> bool {
+        let mut state = self.state.lock().await;
+        if state.pending {
+            state.pending = false;
+            state.running = true;
+            return true;
+        }
+
+        state.running = false;
+        false
+    }
 }
 
 pub async fn setup_app(app: tauri::AppHandle) -> anyhow::Result<()> {
@@ -45,7 +85,7 @@ pub async fn setup_app(app: tauri::AppHandle) -> anyhow::Result<()> {
         vector_index,
         monitors: Arc::new(Mutex::new(HashMap::new())),
         chinese_clip,
-        is_indexing: Arc::new(AtomicBool::new(false)),
+        indexing: Arc::new(IndexingCoordinator::new()),
     };
 
     app.manage(state);
@@ -55,32 +95,47 @@ pub async fn setup_app(app: tauri::AppHandle) -> anyhow::Result<()> {
 }
 
 pub fn start_background_indexing(app_handle: &tauri::AppHandle) {
+    let handle = app_handle.clone();
+
+    tokio::spawn(async move {
+        start_background_indexing_inner(handle).await;
+    });
+}
+
+async fn start_background_indexing_inner(app_handle: tauri::AppHandle) {
     let state = app_handle.state::<AppState>();
 
-    if state
-        .is_indexing
-        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        .is_err()
-    {
-        tracing::debug!("Indexing already in progress, skipping");
+    if !state.indexing.request_run().await {
+        tracing::debug!("Indexing already in progress, queued another run");
         return;
     }
 
     let db = state.db.clone();
     let vector_index = state.vector_index.clone();
     let chinese_clip = state.chinese_clip.clone();
-    let handle = app_handle.clone();
-    let is_indexing = state.is_indexing.clone();
+    let indexing = state.indexing.clone();
 
     tokio::spawn(async move {
-        tracing::info!("Starting background indexing...");
-        match application::search::auto_index_unindexed(&db, &vector_index, &chinese_clip, &handle)
+        loop {
+            tracing::info!("Starting background indexing...");
+            match application::search::auto_index_unindexed(
+                &db,
+                &vector_index,
+                &chinese_clip,
+                &app_handle,
+            )
             .await
-        {
-            Ok(()) => tracing::info!("Background indexing completed"),
-            Err(e) => tracing::error!("Background indexing failed: {}", e),
+            {
+                Ok(()) => tracing::info!("Background indexing completed"),
+                Err(e) => tracing::error!("Background indexing failed: {}", e),
+            }
+
+            if !indexing.finish_run().await {
+                break;
+            }
+
+            tracing::info!("Running queued background indexing request");
         }
-        is_indexing.store(false, Ordering::SeqCst);
     });
 }
 

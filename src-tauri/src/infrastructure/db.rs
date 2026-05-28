@@ -78,12 +78,31 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<()> {
         r#"
         CREATE TABLE IF NOT EXISTS vector_entries (
             id TEXT PRIMARY KEY,
-            photo_id TEXT NOT NULL REFERENCES photos(id) ON DELETE CASCADE,
+            photo_id TEXT NOT NULL UNIQUE REFERENCES photos(id) ON DELETE CASCADE,
             vector TEXT NOT NULL,
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_vectors_photo ON vector_entries(photo_id);
         "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        DELETE FROM vector_entries
+        WHERE id NOT IN (
+            SELECT MIN(id)
+            FROM vector_entries
+            GROUP BY photo_id
+        );
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_vectors_photo_unique ON vector_entries(photo_id);",
     )
     .execute(pool)
     .await?;

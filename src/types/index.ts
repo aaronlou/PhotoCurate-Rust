@@ -77,9 +77,9 @@ export interface ExportResult {
 export interface IndexingProgress {
   current: number;
   total: number;
-  status: "started" | "indexing" | "complete" | "unavailable";
+  status: "started" | "indexing" | "complete" | "unavailable" | "failed";
 }
 
-export type ViewMode = "browser" | "grid" | "list";
+export type ViewMode = "grid" | "list";
 export type NavItem = "library" | "scoring" | "search" | "export";
 export type PhotoSortOrder = "date_desc" | "score_desc" | "score_asc";

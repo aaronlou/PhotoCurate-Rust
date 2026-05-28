@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useAppStore } from "@/stores/useAppStore";
 import {
   getAiSettings,
-  getPhotos,
   scorePhotos,
   validateApiKey,
   updateAiSettings,
@@ -47,7 +46,7 @@ function providerConfig(provider: ScoringProvider) {
 
 export default function ScoringView() {
   const photos = useAppStore((s) => s.photos);
-  const setPhotos = useAppStore((s) => s.setPhotos);
+  const refreshPhotos = useAppStore((s) => s.refreshPhotos);
   const aiSettings = useAppStore((s) => s.aiSettings);
   const setAiSettings = useAppStore((s) => s.setAiSettings);
   const isScoring = useAppStore((s) => s.isScoring);
@@ -122,8 +121,7 @@ export default function ScoringView() {
 
     try {
       await scorePhotos(unscored.map((p) => p.id), allowKeychainRead);
-      const updated = await getPhotos(photoSortOrder);
-      setPhotos(updated);
+      await refreshPhotos(photoSortOrder);
     } catch (e) {
       setScoreError(typeof e === "string" ? e : String(e));
       setScoreNotice(null);

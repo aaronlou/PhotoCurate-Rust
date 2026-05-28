@@ -40,6 +40,16 @@ pub trait VectorRepository {
     async fn delete_all(&self) -> Result<()>;
 }
 
+pub trait EmbeddingRepository {
+    async fn upsert_embedding(&self, photo_id: &str, vector_json: &str, version: i32)
+        -> Result<()>;
+    async fn replace_all_embeddings(
+        &self,
+        embeddings: &[(String, String)],
+        version: i32,
+    ) -> Result<()>;
+}
+
 pub trait PhotoFileGateway {
     async fn scan_directory(&self, dir_path: &str, dir_id: &str) -> Result<Vec<Photo>>;
     async fn generate_thumbnail(
