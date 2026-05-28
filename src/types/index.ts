@@ -53,6 +53,18 @@ export interface AISettings {
 
 export type ScoringProvider = "gemini" | "qwen_vl" | "openai_compatible_vision";
 
+export interface AppUpdateInfo {
+  currentVersion: string;
+  version: string;
+  date: string | null;
+  body: string | null;
+}
+
+export type AppUpdateDownloadEvent =
+  | { event: "Started"; data: { contentLength?: number } }
+  | { event: "Progress"; data: { chunkLength: number } }
+  | { event: "Finished" };
+
 export interface ScoreResult {
   score: number;
   review: string;

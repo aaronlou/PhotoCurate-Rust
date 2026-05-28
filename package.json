@@ -1,7 +1,7 @@
 {
   "name": "photo-curate",
   "private": true,
-  "version": "0.1.4",
+  "version": "0.1.5",
   "license": "(GPL-3.0-only OR LicenseRef-PhotoCurate-Commercial)",
   "type": "module",
   "scripts": {
@@ -10,11 +10,15 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri-dev": "tauri dev",
-    "tauri-build": "tauri build"
+    "tauri-build": "tauri build",
+    "release:macos": "bash scripts/build-macos-release.sh",
+    "updater:manifest": "node scripts/create_updater_manifest.js"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "^2.10.1",
     "clsx": "^2.1.0",
     "lucide-react": "^0.460.0",
     "react": "^19.0.0",

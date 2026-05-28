@@ -3,7 +3,7 @@
 **AI 驱动的照片管理与精选工具。** 自动为你的照片评分和点评，用自然语言搜索照片内容，并从作品库中提炼成长洞察。
 
 <p align="center">
-  <a href="https://github.com/aaronlou/PhotoCurate-Rust/releases/latest/download/PhotoCurate_0.1.4_aarch64.dmg">
+  <a href="https://github.com/aaronlou/PhotoCurate-Rust/releases/latest/download/PhotoCurate_0.1.5_aarch64.dmg">
     <img src="https://img.shields.io/badge/下载-macOS_DMG-7c3aed?style=for-the-badge&logo=apple" alt="下载 macOS DMG">
   </a>
   <a href="https://github.com/aaronlou/PhotoCurate-Rust/releases">
@@ -120,6 +120,16 @@ src-tauri/src/
 | 向量检索 | 内存 BruteForce + 余弦相似度 |
 
 后端应用层通过 ports trait 依赖仓储、文件系统、AI、进度上报等能力；SQLite、Tauri 事件、Gemini/Qwen-VL/Chinese-CLIP 等实现集中在 infrastructure/interface 适配层。这样用例代码不直接绑定具体数据库或 IPC 框架。
+
+## 发布与应用内更新
+
+PhotoCurate 使用 Tauri updater。发布 macOS 版本时需要同时上传 DMG、`PhotoCurate.app.tar.gz`、`PhotoCurate.app.tar.gz.sig` 和 `latest.json`：
+
+```bash
+npm run release:macos
+```
+
+`updater.key` 是更新包签名私钥，已被 `.gitignore` 忽略，不要提交到仓库；Tauri 配置里只保存对应公钥。GitHub Release 需要包含 `latest.json`，应用内「检查更新」会下载 manifest、验证更新包签名，然后安装并重启。CI 中可把私钥放入 `TAURI_SIGNING_PRIVATE_KEY`，本地脚本默认从 `updater.key` 读取。
 
 ## 本地模型安装（可选）
 

@@ -1,9 +1,13 @@
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import { open } from "@tauri-apps/plugin-dialog";
-import { Photo, Directory, AISettings, SearchResult, ExportResult, PhotoSortOrder, ScoringProvider, LibraryInsights } from "@/types";
+import { relaunch } from "@tauri-apps/plugin-process";
+import { check, type Update } from "@tauri-apps/plugin-updater";
+import { Photo, Directory, AISettings, SearchResult, ExportResult, PhotoSortOrder, ScoringProvider, LibraryInsights, AppUpdateDownloadEvent, AppUpdateInfo } from "@/types";
 
 const STATE_RETRY_ATTEMPTS = 20;
 const STATE_RETRY_DELAY_MS = 250;
+let pendingUpdate: Update | null = null;
 
 function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -131,4 +135,41 @@ export async function getIndexStats(): Promise<{ count: number; dimension: numbe
 
 export async function rebuildAllIndex(allowKeychainRead = false): Promise<number> {
   return invokeCommand("rebuild_all_index", { allowKeychainRead });
+}
+
+export async function getAppVersion(): Promise<string> {
+  return getVersion();
+}
+
+export async function checkForAppUpdate(): Promise<AppUpdateInfo | null> {
+  pendingUpdate = await check();
+  if (!pendingUpdate) {
+    return null;
+  }
+
+  return {
+    currentVersion: pendingUpdate.currentVersion,
+    version: pendingUpdate.version,
+    date: pendingUpdate.date ?? null,
+    body: pendingUpdate.body ?? null,
+  };
+}
+
+export async function installAppUpdate(
+  onEvent: (event: AppUpdateDownloadEvent) => void
+): Promise<void> {
+  if (!pendingUpdate) {
+    pendingUpdate = await check();
+  }
+  if (!pendingUpdate) {
+    throw new Error("当前已经是最新版本");
+  }
+
+  const update = pendingUpdate;
+  const channel = new Channel<AppUpdateDownloadEvent>();
+  channel.onmessage = onEvent;
+  await update.downloadAndInstall((event) => channel.onmessage(event));
+  await update.close();
+  pendingUpdate = null;
+  await relaunch();
 }

@@ -1,4 +1,5 @@
 import { useAppStore } from "@/stores/useAppStore";
+import UpdateStatus from "@/components/UpdateStatus";
 import { NavItem } from "@/types";
 import {
   Images,
@@ -50,6 +51,7 @@ export default function Sidebar() {
           </button>
         ))}
       </nav>
+      <UpdateStatus />
     </aside>
   );
 }
