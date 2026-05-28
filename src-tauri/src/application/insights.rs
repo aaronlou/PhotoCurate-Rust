@@ -98,10 +98,10 @@ fn median(values: &mut [f64]) -> Option<f64> {
 fn score_distribution(scores: &[f64]) -> Vec<ScoreBucket> {
     let buckets = [
         ("90+", 90.0, 100.0),
-        ("80-89", 80.0, 89.999),
-        ("70-79", 70.0, 79.999),
-        ("60-69", 60.0, 69.999),
-        ("<60", 0.0, 59.999),
+        ("80-89", 80.0, 89.0),
+        ("70-79", 70.0, 79.0),
+        ("60-69", 60.0, 69.0),
+        ("<60", 0.0, 59.0),
     ];
 
     buckets
@@ -112,10 +112,21 @@ fn score_distribution(scores: &[f64]) -> Vec<ScoreBucket> {
             max,
             count: scores
                 .iter()
-                .filter(|score| **score >= min && **score <= max)
+                .filter(|score| score_in_bucket(**score, label))
                 .count(),
         })
         .collect()
+}
+
+fn score_in_bucket(score: f64, label: &str) -> bool {
+    match label {
+        "90+" => score >= 90.0,
+        "80-89" => (80.0..90.0).contains(&score),
+        "70-79" => (70.0..80.0).contains(&score),
+        "60-69" => (60.0..70.0).contains(&score),
+        "<60" => score < 60.0,
+        _ => false,
+    }
 }
 
 fn dimension_averages(photos: &[&Photo]) -> Vec<DimensionInsight> {
@@ -308,4 +319,145 @@ fn normalize_label(value: &str) -> String {
         .join(" ")
         .trim_matches(|c: char| matches!(c, '，' | ',' | '。' | '.' | '；' | ';' | ':' | '：'))
         .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::models::{DimensionScore, PhotoEvaluation};
+    use chrono::{Duration, Utc};
+
+    fn photo(index: usize, score: Option<f64>, date_offset_days: i64) -> Photo {
+        let latest_evaluation = score.map(|overall_score| PhotoEvaluation {
+            id: format!("evaluation-{index}"),
+            photo_id: format!("photo-{index}"),
+            overall_score,
+            summary: format!("summary {index}"),
+            strengths: vec!["构图稳定".to_string(), " 光线自然，".to_string()],
+            weaknesses: vec!["背景干扰".to_string()],
+            suggestions: vec!["练习主体取舍".to_string()],
+            dimension_scores: vec![
+                DimensionScore {
+                    name: "构图".to_string(),
+                    score: overall_score,
+                    note: None,
+                },
+                DimensionScore {
+                    name: "光线".to_string(),
+                    score: overall_score - 5.0,
+                    note: None,
+                },
+            ],
+            tags: vec!["人像".to_string()],
+            model_provider: "test".to_string(),
+            model_name: "test-model".to_string(),
+            prompt_version: "test-prompt".to_string(),
+            raw_response: None,
+            created_at: Utc::now(),
+        });
+
+        Photo {
+            id: format!("photo-{index}"),
+            file_path: format!("/tmp/photo-{index}.jpg"),
+            file_name: format!("photo-{index}.jpg"),
+            file_size: 100,
+            date_created: None,
+            date_modified: Utc::now() - Duration::days(date_offset_days),
+            camera_make: None,
+            camera_model: None,
+            lens_model: None,
+            focal_length: None,
+            aperture: None,
+            shutter_speed: None,
+            iso: None,
+            width: None,
+            height: None,
+            aesthetic_score: score,
+            has_been_scored: score.is_some(),
+            score_date: None,
+            has_embedding: false,
+            embedding_version: None,
+            thumbnail_path: None,
+            directory_id: None,
+            has_been_exported: false,
+            export_date: None,
+            latest_evaluation,
+        }
+    }
+
+    #[test]
+    fn empty_library_returns_guidance_without_scores() {
+        let insights = build_library_insights(&[]);
+
+        assert_eq!(insights.total_photos, 0);
+        assert_eq!(insights.evaluated_photos, 0);
+        assert_eq!(insights.average_score, None);
+        assert_eq!(
+            insights
+                .score_distribution
+                .iter()
+                .map(|bucket| bucket.count)
+                .sum::<usize>(),
+            0
+        );
+        assert!(!insights.coach_notes.is_empty());
+    }
+
+    #[test]
+    fn distinguishes_legacy_scores_from_evaluations() {
+        let photos = vec![photo(1, Some(88.0), 1), {
+            let mut legacy = photo(2, None, 2);
+            legacy.aesthetic_score = Some(76.0);
+            legacy.has_been_scored = true;
+            legacy
+        }];
+
+        let insights = build_library_insights(&photos);
+
+        assert_eq!(insights.total_photos, 2);
+        assert_eq!(insights.evaluated_photos, 1);
+        assert_eq!(insights.score_only_photos, 1);
+        assert_eq!(insights.average_score, Some(88.0));
+    }
+
+    #[test]
+    fn aggregates_scores_dimensions_and_text_frequency() {
+        let photos = vec![
+            photo(1, Some(95.0), 1),
+            photo(2, Some(89.9), 2),
+            photo(3, Some(72.0), 3),
+            photo(4, Some(58.0), 4),
+        ];
+
+        let insights = build_library_insights(&photos);
+
+        assert_eq!(insights.high_score_count, 2);
+        assert_eq!(insights.high_score_rate, 0.5);
+        assert_eq!(insights.median_score, Some(80.95));
+        assert_eq!(insights.score_distribution[0].count, 1);
+        assert_eq!(insights.score_distribution[1].count, 1);
+        assert_eq!(insights.score_distribution[2].count, 1);
+        assert_eq!(insights.score_distribution[4].count, 1);
+        assert_eq!(insights.dimension_averages.len(), 2);
+        assert_eq!(insights.top_strengths[0].label, "光线自然");
+        assert_eq!(insights.recurring_weaknesses[0].count, 4);
+        assert_eq!(insights.top_photos[0].file_name, "photo-1.jpg");
+    }
+
+    #[test]
+    fn reports_recent_trend_after_enough_evaluations() {
+        let photos: Vec<Photo> = (0..24)
+            .map(|index| {
+                let score = if index < 12 { 90.0 } else { 70.0 };
+                photo(index, Some(score), index as i64)
+            })
+            .collect();
+
+        let insights = build_library_insights(&photos);
+        let trend = insights.recent_trend.expect("trend should exist");
+
+        assert_eq!(trend.recent_average, 90.0);
+        assert_eq!(trend.earlier_average, 70.0);
+        assert_eq!(trend.delta, 20.0);
+    }
 }

@@ -1,9 +1,9 @@
 # PhotoCurate
 
-**AI 驱动的照片管理与精选工具。** 自动为你的照片打分，用自然语言搜索照片内容，一键导出高分作品。
+**AI 驱动的照片管理与精选工具。** 自动为你的照片评分和点评，用自然语言搜索照片内容，并从作品库中提炼成长洞察。
 
 <p align="center">
-  <a href="https://github.com/aaronlou/PhotoCurate-Rust/releases/latest/download/PhotoCurate_0.1.3_aarch64.dmg">
+  <a href="https://github.com/aaronlou/PhotoCurate-Rust/releases/latest/download/PhotoCurate_0.1.4_aarch64.dmg">
     <img src="https://img.shields.io/badge/下载-macOS_DMG-7c3aed?style=for-the-badge&logo=apple" alt="下载 macOS DMG">
   </a>
   <a href="https://github.com/aaronlou/PhotoCurate-Rust/releases">
@@ -21,6 +21,7 @@
 
 - **拍了太多，不知道哪些值得保留** → AI 自动美学评分（0-100 分），一眼看到最好的照片
 - **想找某张照片，但翻半天找不到** → 用中文描述画面内容直接搜索，比如「夕阳下的海滩」「穿红衣服的小孩」
+- **想知道自己拍摄的稳定优势和短板** → 汇总 AI 评分与点评，生成作品洞察和练习方向
 - **想导出最好的照片，但一张张挑选太累** → 设定评分阈值，一键导出所有高分照片
 
 PhotoCurate 就是帮你解决这些问题的桌面应用。
@@ -94,7 +95,8 @@ npm run tauri-dev
 1. **导入照片** — 点击左侧「图库」，添加你的照片文件夹。应用会自动扫描照片，并在后台生成搜索索引
 2. **AI 评分** — 切换到「评分」页，配置 Gemini、Qwen-VL 或自定义视觉模型 API Key 后开始评分，进度条实时更新
 3. **智能检索** — 照片索引完成后，在「搜索」页输入中文描述即可找到匹配的画面，无需手动操作
-4. **精选导出** — 在「导出」页设置评分门槛，一键导出高分照片
+4. **作品洞察** — 在「洞察」页查看评分分布、常见优势、反复短板和练习方向
+5. **精选导出** — 在「导出」页设置评分门槛，一键导出高分照片
 
 ---
 
