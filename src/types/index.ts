@@ -175,5 +175,5 @@ export interface IndexingProgress {
 }
 
 export type ViewMode = "grid" | "list";
-export type NavItem = "library" | "scoring" | "insights" | "search" | "export";
+export type NavItem = "library" | "scoring" | "insights" | "ai_service" | "search" | "export";
 export type PhotoSortOrder = "date_desc" | "score_desc" | "score_asc";

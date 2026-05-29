@@ -1,5 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, BarChart3, CheckCircle2, RefreshCw, Sparkles, Target, TrendingUp } from "lucide-react";
+import {
+  AlertCircle,
+  BarChart3,
+  CheckCircle2,
+  ClipboardList,
+  Layers3,
+  RefreshCw,
+  Sparkles,
+  Target,
+  TrendingUp,
+  WandSparkles,
+} from "lucide-react";
+import { useAppStore } from "@/stores/useAppStore";
 import { getLibraryInsights } from "@/hooks/useInvoke";
 import type { DimensionInsight, LibraryInsights, ScoreBucket, TextInsight } from "@/types";
 
@@ -20,6 +32,7 @@ function formatLoadError(error: unknown) {
 }
 
 export default function InsightsView() {
+  const setCurrentView = useAppStore((s) => s.setCurrentView);
   const [insights, setInsights] = useState<LibraryInsights | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -96,14 +109,24 @@ export default function InsightsView() {
               <MetricCard
                 label="旧评分待补全"
                 value={`${insights.score_only_photos}`}
-                detail="可在评分页补生成评价"
+                detail="可在作品分析补生成评价"
               />
             </section>
 
             {insights.evaluated_photos === 0 ? (
-              <EmptyState />
+              <EmptyState onStartAnalysis={() => setCurrentView("scoring")} />
             ) : (
               <>
+                {(insights.score_only_photos > 0 || insights.evaluated_photos < insights.total_photos) && (
+                  <AnalysisPrompt
+                    missingCount={Math.max(0, insights.total_photos - insights.evaluated_photos)}
+                    scoreOnlyCount={insights.score_only_photos}
+                    onStartAnalysis={() => setCurrentView("scoring")}
+                  />
+                )}
+
+                <InsightReportPreview insights={insights} />
+
                 <section className="grid grid-cols-[1.25fr_0.75fr] gap-5">
                   <div className="rounded-lg border border-gray-200 bg-white p-5">
                     <div className="mb-4 flex items-center justify-between">
@@ -211,15 +234,118 @@ function MetricCard({ label, value, detail }: { label: string; value: string; de
   );
 }
 
-function EmptyState() {
+function EmptyState({ onStartAnalysis }: { onStartAnalysis: () => void }) {
   return (
     <div className="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center">
       <Sparkles size={26} className="mx-auto text-blue-500" />
       <h3 className="mt-3 text-sm font-semibold text-gray-800">还没有足够的评价数据</h3>
       <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-gray-500">
-        先到评分页为照片生成结构化评价，洞察页会开始汇总你的优势、短板、维度表现和练习方向。
+        先为照片生成结构化评价，洞察页会开始汇总你的优势、短板、维度表现和练习方向。
       </p>
+      <button
+        type="button"
+        onClick={onStartAnalysis}
+        className="mx-auto mt-4 flex items-center gap-1.5 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+      >
+        <WandSparkles size={15} />
+        开始作品分析
+      </button>
     </div>
+  );
+}
+
+function AnalysisPrompt({
+  missingCount,
+  scoreOnlyCount,
+  onStartAnalysis,
+}: {
+  missingCount: number;
+  scoreOnlyCount: number;
+  onStartAnalysis: () => void;
+}) {
+  return (
+    <section className="flex items-center justify-between gap-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+      <div className="flex items-start gap-2">
+        <WandSparkles size={16} className="mt-0.5 shrink-0 text-amber-700" />
+        <div>
+          <p className="text-sm font-medium text-amber-900">补全分析后，洞察会更可靠</p>
+          <p className="mt-1 text-xs text-amber-700">
+            {missingCount} 张照片缺少结构化评价
+            {scoreOnlyCount > 0 && `，其中 ${scoreOnlyCount} 张只有旧评分`}
+          </p>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={onStartAnalysis}
+        className="shrink-0 rounded-md bg-amber-600 px-3 py-2 text-xs font-medium text-white hover:bg-amber-700"
+      >
+        去作品分析
+      </button>
+    </section>
+  );
+}
+
+function InsightReportPreview({ insights }: { insights: LibraryInsights }) {
+  const reportItems = [
+    {
+      icon: <Layers3 size={15} />,
+      label: "作品画像",
+      value: `${insights.top_tags.length} 个高频标签`,
+      detail: "汇总题材、风格和稳定表达方式",
+    },
+    {
+      icon: <TrendingUp size={15} />,
+      label: "成长趋势",
+      value: insights.recent_trend
+        ? `${insights.recent_trend.delta >= 0 ? "+" : ""}${insights.recent_trend.delta.toFixed(1)}`
+        : "待积累",
+      detail: "对比近期作品和早期作品的质量变化",
+    },
+    {
+      icon: <ClipboardList size={15} />,
+      label: "练习计划",
+      value: `${insights.suggested_practices.length} 条方向`,
+      detail: "把反复短板转成下一阶段训练主题",
+    },
+  ];
+
+  return (
+    <section className="rounded-lg border border-blue-100 bg-white p-5">
+      <div className="flex items-start justify-between gap-5">
+        <div className="max-w-2xl">
+          <div className="flex items-center gap-2">
+            <Sparkles size={16} className="text-blue-600" />
+            <h3 className="text-sm font-semibold text-gray-800">深度分析报告</h3>
+            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700">
+              PhotoCurate AI
+            </span>
+          </div>
+          <p className="mt-2 text-sm leading-6 text-gray-500">
+            当评分和点评持续积累后，PhotoCurate 可以把单张评价升级为作品库级别的分析：你擅长拍什么、哪些问题反复出现，以及下一阶段应该如何练习。
+          </p>
+        </div>
+        <button
+          type="button"
+          disabled
+          className="shrink-0 rounded-md bg-gray-200 px-3 py-2 text-xs font-medium text-gray-500"
+        >
+          即将开放
+        </button>
+      </div>
+      <div className="mt-4 grid grid-cols-3 gap-3">
+        {reportItems.map((item) => (
+          <div key={item.label} className="rounded-md border border-gray-200 bg-gray-50 p-3">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-gray-500">
+              <span className="text-blue-600">{item.icon}</span>
+              {item.label}
+            </div>
+            <p className="mt-2 text-lg font-semibold tracking-tight text-gray-900">{item.value}</p>
+            <p className="mt-1 text-[11px] leading-5 text-gray-500">{item.detail}</p>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 

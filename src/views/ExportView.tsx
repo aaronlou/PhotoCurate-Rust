@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useAppStore } from "@/stores/useAppStore";
 import { exportPhotos, pickDirectory } from "@/hooks/useInvoke";
-import { Download, Check, FolderOpen, AlertTriangle, FileImage, FolderTree, List } from "lucide-react";
+import { Download, Check, FolderOpen, AlertTriangle, FileImage, FolderTree, List, WandSparkles } from "lucide-react";
 import type { ExportResult } from "@/types";
 
 export default function ExportView() {
   const photos = useAppStore((s) => s.photos);
+  const setCurrentView = useAppStore((s) => s.setCurrentView);
   const [minScore, setMinScore] = useState(70);
   const [destination, setDestination] = useState("");
   const [isExporting, setIsExporting] = useState(false);
@@ -13,6 +14,8 @@ export default function ExportView() {
   const [preserveStructure, setPreserveStructure] = useState(false);
 
   const scoredPhotos = photos.filter((p) => p.has_been_scored && (p.aesthetic_score ?? 0) >= minScore);
+  const analyzedCount = photos.filter((p) => p.has_been_scored).length;
+  const needsAnalysis = photos.length > 0 && analyzedCount === 0;
 
   const handlePickDestination = async () => {
     const path = await pickDirectory();
@@ -47,6 +50,27 @@ export default function ExportView() {
         <Download size={20} />
         精选导出
       </h2>
+
+      {needsAnalysis && (
+        <div className="mb-4 flex items-center justify-between gap-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+          <div className="flex items-start gap-2">
+            <WandSparkles size={16} className="mt-0.5 shrink-0 text-amber-700" />
+            <div>
+              <p className="text-sm font-medium text-amber-900">先完成 AI 分析，才能按评分精选导出</p>
+              <p className="mt-1 text-xs text-amber-700">
+                当前图库还没有已评分照片。分析完成后，这里会自动筛选高分作品。
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setCurrentView("scoring")}
+            className="shrink-0 rounded-md bg-amber-600 px-3 py-2 text-xs font-medium text-white hover:bg-amber-700"
+          >
+            去作品分析
+          </button>
+        </div>
+      )}
 
       <div className="bg-white rounded-lg border border-gray-200 p-5 space-y-5 mb-6">
         {/* Score threshold */}

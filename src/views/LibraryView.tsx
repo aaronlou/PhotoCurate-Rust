@@ -1,7 +1,18 @@
 import { useState } from "react";
 import { useAppStore } from "@/stores/useAppStore";
 import { pickDirectory } from "@/hooks/useInvoke";
-import { FolderPlus, LayoutGrid, List, Image as ImageIcon, ArrowDownAZ, ArrowUpAZ, CalendarDays, ChevronDown, Sparkles } from "lucide-react";
+import {
+  FolderPlus,
+  LayoutGrid,
+  List,
+  Image as ImageIcon,
+  ArrowDownAZ,
+  ArrowUpAZ,
+  CalendarDays,
+  ChevronDown,
+  Sparkles,
+  WandSparkles,
+} from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -15,6 +26,7 @@ export default function LibraryView() {
   const photos = useAppStore((s) => s.photos);
   const selectedPhoto = useAppStore((s) => s.selectedPhoto);
   const setSelectedPhoto = useAppStore((s) => s.setSelectedPhoto);
+  const setCurrentView = useAppStore((s) => s.setCurrentView);
   const viewMode = useAppStore((s) => s.viewMode);
   const setViewMode = useAppStore((s) => s.setViewMode);
   const photoSortOrder = useAppStore((s) => s.photoSortOrder);
@@ -55,13 +67,15 @@ export default function LibraryView() {
       : photoSortOrder === "score_asc"
       ? "评分从低到高"
       : "按时间排序";
+  const missingEvaluationCount = photos.filter((p) => !p.latest_evaluation).length;
+  const evaluatedCount = photos.filter((p) => p.latest_evaluation).length;
 
   if (photos.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-gray-500">
         <ImageIcon size={48} strokeWidth={1.2} className="mb-4 text-gray-300" />
         <h2 className="text-base font-medium text-gray-700 mb-1">暂无照片</h2>
-        <p className="text-sm text-gray-400 mb-5">添加包含照片的文件夹，开始自动扫描和 AI 评分</p>
+        <p className="text-sm text-gray-400 mb-5">添加包含照片的文件夹，开始整理、分析和筛选作品</p>
         <button
           onClick={handleAddDirectory}
           disabled={isAdding}
@@ -81,7 +95,29 @@ export default function LibraryView() {
     <div className="flex flex-col h-full">
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100">
-        <span className="text-[11px] text-gray-400">{photos.length} 张照片</span>
+        <div className="flex items-center gap-3">
+          <span className="text-[11px] text-gray-400">{photos.length} 张照片</span>
+          {missingEvaluationCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setCurrentView("scoring")}
+              className="flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700 hover:bg-amber-100"
+            >
+              <WandSparkles size={12} />
+              {missingEvaluationCount} 张待分析
+            </button>
+          )}
+          {missingEvaluationCount === 0 && evaluatedCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setCurrentView("insights")}
+              className="flex items-center gap-1.5 rounded-full bg-green-50 px-2.5 py-1 text-[11px] font-medium text-green-700 hover:bg-green-100"
+            >
+              <Sparkles size={12} />
+              查看洞察
+            </button>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           {/* Sort dropdown */}
           <div className="relative">
@@ -258,6 +294,7 @@ export default function LibraryView() {
 
 function EvaluationPanel({ photo }: { photo: Photo }) {
   const evaluation = photo.latest_evaluation;
+  const setCurrentView = useAppStore((s) => s.setCurrentView);
 
   return (
     <aside className="w-[340px] border-l border-gray-100 bg-gray-50/60 overflow-auto p-4">
@@ -274,8 +311,16 @@ function EvaluationPanel({ photo }: { photo: Photo }) {
       </div>
 
       {!evaluation ? (
-        <div className="rounded-lg border border-dashed border-gray-200 bg-white p-4 text-sm text-gray-500">
-          这张照片还没有 AI 评价。可以在评分页批量生成评分和点评。
+        <div className="rounded-lg border border-dashed border-gray-200 bg-white p-4">
+          <p className="text-sm text-gray-500">这张照片还没有 AI 评价。</p>
+          <button
+            type="button"
+            onClick={() => setCurrentView("scoring")}
+            className="mt-3 flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700"
+          >
+            <WandSparkles size={14} />
+            生成 AI 分析
+          </button>
         </div>
       ) : (
         <div className="space-y-4">
