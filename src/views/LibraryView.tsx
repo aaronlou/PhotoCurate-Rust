@@ -14,6 +14,10 @@ import {
   ArrowUpAZ,
   CalendarDays,
   ChevronDown,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
   Sparkles,
   Trash2,
   WandSparkles,
@@ -30,6 +34,23 @@ function cn(...inputs: ClassValue[]) {
 function directoryName(path: string) {
   const normalized = path.replace(/\/+$/, "");
   return normalized.split("/").pop() || normalized || path;
+}
+
+function getStoredPanelState(key: string, fallback: boolean) {
+  try {
+    const storedValue = window.localStorage.getItem(key);
+    return storedValue === null ? fallback : storedValue !== "false";
+  } catch {
+    return fallback;
+  }
+}
+
+function setStoredPanelState(key: string, value: boolean) {
+  try {
+    window.localStorage.setItem(key, String(value));
+  } catch {
+    // Ignore storage failures so the library view never breaks over a preference.
+  }
 }
 
 export default function LibraryView() {
@@ -50,6 +71,12 @@ export default function LibraryView() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [selectedDirectoryId, setSelectedDirectoryId] = useState<string>("all");
+  const [isFolderPanelOpen, setIsFolderPanelOpen] = useState(() =>
+    getStoredPanelState("photocurate.library.folderPanelOpen", true)
+  );
+  const [isEvaluationPanelOpen, setIsEvaluationPanelOpen] = useState(() =>
+    getStoredPanelState("photocurate.library.evaluationPanelOpen", true)
+  );
 
   useEffect(() => {
     loadLibrary().catch((error) => {
@@ -61,6 +88,14 @@ export default function LibraryView() {
       );
     });
   }, [loadLibrary]);
+
+  useEffect(() => {
+    setStoredPanelState("photocurate.library.folderPanelOpen", isFolderPanelOpen);
+  }, [isFolderPanelOpen]);
+
+  useEffect(() => {
+    setStoredPanelState("photocurate.library.evaluationPanelOpen", isEvaluationPanelOpen);
+  }, [isEvaluationPanelOpen]);
 
   const directoryPhotoCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -185,6 +220,15 @@ export default function LibraryView() {
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100">
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setIsFolderPanelOpen((value) => !value)}
+            title={isFolderPanelOpen ? "折叠源文件夹" : "展开源文件夹"}
+            aria-label={isFolderPanelOpen ? "折叠源文件夹" : "展开源文件夹"}
+            className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-800"
+          >
+            {isFolderPanelOpen ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}
+          </button>
           <span className="text-[11px] font-medium text-gray-600">{selectedScopeLabel}</span>
           <span className="text-[11px] text-gray-400">
             {visiblePhotos.length} 张照片 / {directories.length} 个文件夹
@@ -211,6 +255,28 @@ export default function LibraryView() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsEvaluationPanelOpen((value) => !value)}
+            disabled={!selectedPhoto}
+            title={
+              !selectedPhoto
+                ? "选择照片后查看分析"
+                : isEvaluationPanelOpen
+                ? "折叠分析面板"
+                : "展开分析面板"
+            }
+            aria-label={
+              !selectedPhoto
+                ? "选择照片后查看分析"
+                : isEvaluationPanelOpen
+                ? "折叠分析面板"
+                : "展开分析面板"
+            }
+            className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-35"
+          >
+            {isEvaluationPanelOpen ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}
+          </button>
           {/* Sort dropdown */}
           <div className="relative">
             <button
@@ -297,89 +363,125 @@ export default function LibraryView() {
 
       {/* Content */}
       <div className="flex-1 min-h-0 flex">
-        <aside className="w-[280px] shrink-0 overflow-auto border-r border-gray-100 bg-gray-50/70 px-3 py-3">
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-              <Folders size={16} />
-              源文件夹
-            </div>
-            <button
-              type="button"
-              onClick={handleAddDirectory}
-              disabled={isAdding}
-              title="添加文件夹"
-              className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-800 disabled:opacity-50"
-            >
-              <FolderPlus size={15} />
-            </button>
-          </div>
-
-          <div className="space-y-1">
-            <button
-              type="button"
-              onClick={() => handleSelectDirectory("all")}
-              className={cn(
-                "flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors",
-                selectedDirectoryId === "all"
-                  ? "bg-white text-blue-700 shadow-sm ring-1 ring-blue-100"
-                  : "text-gray-600 hover:bg-white"
-              )}
-            >
-              <Folders size={15} />
-              <span className="min-w-0 flex-1 truncate">全部照片</span>
-              <span className="shrink-0 text-[11px] text-gray-400">{photos.length}</span>
-            </button>
-
-            {directories.map((directory) => {
-              const isActive = selectedDirectoryId === directory.id;
-              const count = directoryPhotoCounts.get(directory.id) ?? 0;
-
-              return (
-                <div
-                  key={directory.id}
-                  className={cn(
-                    "group flex items-center gap-1 rounded-md transition-colors",
-                    isActive
-                      ? "bg-white text-blue-700 shadow-sm ring-1 ring-blue-100"
-                      : "text-gray-600 hover:bg-white"
-                  )}
+        {isFolderPanelOpen ? (
+          <aside className="w-[280px] shrink-0 overflow-auto border-r border-gray-100 bg-gray-50/70 px-3 py-3">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <Folders size={16} />
+                源文件夹
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={handleAddDirectory}
+                  disabled={isAdding}
+                  title="添加文件夹"
+                  aria-label="添加文件夹"
+                  className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-800 disabled:opacity-50"
                 >
-                  <button
-                    type="button"
-                    onClick={() => handleSelectDirectory(directory.id)}
-                    className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-2 text-left"
-                  >
-                    {isActive ? <FolderOpen size={15} /> : <Folder size={15} />}
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">{directoryName(directory.path)}</span>
-                      <span className="block truncate text-[11px] text-gray-400">{directory.path}</span>
-                    </span>
-                    <span className="shrink-0 text-[11px] text-gray-400">{count}</span>
-                  </button>
-                  <button
-                    type="button"
-                    title="移出文件夹"
-                    onClick={(event) => handleRemoveDirectory(event, directory)}
-                    disabled={removingDirectoryId === directory.id}
+                  <FolderPlus size={15} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsFolderPanelOpen(false)}
+                  title="折叠源文件夹"
+                  aria-label="折叠源文件夹"
+                  className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-800"
+                >
+                  <PanelLeftClose size={15} />
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <button
+                type="button"
+                onClick={() => handleSelectDirectory("all")}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors",
+                  selectedDirectoryId === "all"
+                    ? "bg-white text-blue-700 shadow-sm ring-1 ring-blue-100"
+                    : "text-gray-600 hover:bg-white"
+                )}
+              >
+                <Folders size={15} />
+                <span className="min-w-0 flex-1 truncate">全部照片</span>
+                <span className="shrink-0 text-[11px] text-gray-400">{photos.length}</span>
+              </button>
+
+              {directories.map((directory) => {
+                const isActive = selectedDirectoryId === directory.id;
+                const count = directoryPhotoCounts.get(directory.id) ?? 0;
+
+                return (
+                  <div
+                    key={directory.id}
                     className={cn(
-                      "mr-1 shrink-0 rounded p-1 text-gray-300 opacity-0 hover:bg-red-50 hover:text-red-600 group-hover:opacity-100 disabled:pointer-events-none disabled:opacity-50",
-                      isActive && "opacity-100",
+                      "group flex items-center gap-1 rounded-md transition-colors",
+                      isActive
+                        ? "bg-white text-blue-700 shadow-sm ring-1 ring-blue-100"
+                        : "text-gray-600 hover:bg-white"
                     )}
                   >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-
-          {errorMsg && (
-            <div className="mt-3 flex items-start gap-1.5 rounded-md bg-red-50 px-2.5 py-2 text-xs leading-5 text-red-600">
-              <AlertCircle size={14} className="mt-0.5 shrink-0" />
-              <span>{errorMsg}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleSelectDirectory(directory.id)}
+                      className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-2 text-left"
+                    >
+                      {isActive ? <FolderOpen size={15} /> : <Folder size={15} />}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium">{directoryName(directory.path)}</span>
+                        <span className="block truncate text-[11px] text-gray-400">{directory.path}</span>
+                      </span>
+                      <span className="shrink-0 text-[11px] text-gray-400">{count}</span>
+                    </button>
+                    <button
+                      type="button"
+                      title="移出文件夹"
+                      aria-label="移出文件夹"
+                      onClick={(event) => handleRemoveDirectory(event, directory)}
+                      disabled={removingDirectoryId === directory.id}
+                      className={cn(
+                        "mr-1 shrink-0 rounded p-1 text-gray-300 opacity-0 hover:bg-red-50 hover:text-red-600 group-hover:opacity-100 disabled:pointer-events-none disabled:opacity-50",
+                        isActive && "opacity-100",
+                      )}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
-          )}
-        </aside>
+
+            {errorMsg && (
+              <div className="mt-3 flex items-start gap-1.5 rounded-md bg-red-50 px-2.5 py-2 text-xs leading-5 text-red-600">
+                <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                <span>{errorMsg}</span>
+              </div>
+            )}
+          </aside>
+        ) : (
+          <aside className="w-11 shrink-0 border-r border-gray-100 bg-gray-50/70 px-1.5 py-3">
+            <button
+              type="button"
+              onClick={() => setIsFolderPanelOpen(true)}
+              title="展开源文件夹"
+              aria-label="展开源文件夹"
+              className="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-white hover:text-blue-600 hover:shadow-sm"
+            >
+              <PanelLeftOpen size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsFolderPanelOpen(true)}
+              title={`${directories.length} 个文件夹`}
+              aria-label="展开源文件夹"
+              className="mt-2 flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-white hover:text-blue-600 hover:shadow-sm"
+            >
+              <Folders size={16} />
+            </button>
+          </aside>
+        )}
 
         <div className="flex-1 overflow-auto p-4 scrollbar-thin">
           {visiblePhotos.length === 0 ? (
@@ -391,7 +493,7 @@ export default function LibraryView() {
               </p>
             </div>
           ) : viewMode === "grid" ? (
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(104px,1fr))] gap-3">
               {visiblePhotos.map((photo) => (
                 <div
                   key={photo.id}
@@ -468,15 +570,42 @@ export default function LibraryView() {
             </div>
           )}
         </div>
-        {selectedPhoto && (
-          <EvaluationPanel photo={selectedPhoto} />
+        {selectedPhoto && isEvaluationPanelOpen && (
+          <EvaluationPanel
+            photo={selectedPhoto}
+            onCollapse={() => setIsEvaluationPanelOpen(false)}
+          />
+        )}
+        {selectedPhoto && !isEvaluationPanelOpen && (
+          <aside className="w-11 shrink-0 border-l border-gray-100 bg-gray-50/60 px-1.5 py-3">
+            <button
+              type="button"
+              onClick={() => setIsEvaluationPanelOpen(true)}
+              title="展开分析面板"
+              aria-label="展开分析面板"
+              className="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-white hover:text-blue-600 hover:shadow-sm"
+            >
+              <PanelRightOpen size={16} />
+            </button>
+            {selectedPhoto.aesthetic_score !== null && (
+              <button
+                type="button"
+                onClick={() => setIsEvaluationPanelOpen(true)}
+                title={`评分 ${Math.round(selectedPhoto.aesthetic_score)}`}
+                aria-label="展开分析面板"
+                className="mt-2 flex min-h-8 w-8 items-center justify-center rounded-md bg-amber-100 px-1 text-[11px] font-semibold text-amber-700 hover:bg-amber-200"
+              >
+                {Math.round(selectedPhoto.aesthetic_score)}
+              </button>
+            )}
+          </aside>
         )}
       </div>
     </div>
   );
 }
 
-function EvaluationPanel({ photo }: { photo: Photo }) {
+function EvaluationPanel({ photo, onCollapse }: { photo: Photo; onCollapse: () => void }) {
   const evaluation = photo.latest_evaluation;
   const setCurrentView = useAppStore((s) => s.setCurrentView);
 
@@ -487,11 +616,22 @@ function EvaluationPanel({ photo }: { photo: Photo }) {
           <p className="text-sm font-medium text-gray-800 truncate">{photo.file_name}</p>
           <p className="text-[11px] text-gray-400 truncate">{photo.file_path}</p>
         </div>
-        {photo.aesthetic_score !== null && (
-          <div className="shrink-0 rounded-md bg-amber-100 px-2 py-1 text-sm font-semibold text-amber-700">
-            {Math.round(photo.aesthetic_score)}
-          </div>
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          {photo.aesthetic_score !== null && (
+            <div className="rounded-md bg-amber-100 px-2 py-1 text-sm font-semibold text-amber-700">
+              {Math.round(photo.aesthetic_score)}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={onCollapse}
+            title="折叠分析面板"
+            aria-label="折叠分析面板"
+            className="rounded-md p-1.5 text-gray-400 hover:bg-white hover:text-gray-800"
+          >
+            <PanelRightClose size={15} />
+          </button>
+        </div>
       </div>
 
       {!evaluation ? (
