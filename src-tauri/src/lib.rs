@@ -33,6 +33,7 @@ pub fn run() {
             interface::commands::start_scanning,
             interface::commands::score_photos,
             interface::commands::build_search_index,
+            interface::commands::cancel_search_indexing,
             interface::commands::natural_language_search,
             interface::commands::export_photos,
             interface::commands::get_library_insights,

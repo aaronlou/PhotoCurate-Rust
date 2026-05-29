@@ -3006,6 +3006,7 @@ dependencies = [
  "blake3",
  "chrono",
  "dirs",
+ "futures-util",
  "image",
  "kamadak-exif",
  "ndarray",

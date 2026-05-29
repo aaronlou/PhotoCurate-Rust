@@ -22,7 +22,7 @@ pub struct AppState {
 #[derive(Debug, Default)]
 struct IndexingState {
     running: bool,
-    pending: bool,
+    cancel_requested: bool,
 }
 
 #[derive(Debug, Default)]
@@ -35,28 +35,32 @@ impl IndexingCoordinator {
         Self::default()
     }
 
-    pub async fn request_run(&self) -> bool {
+    pub async fn start_manual_run(&self) -> bool {
         let mut state = self.state.lock().await;
         if state.running {
-            state.pending = true;
             return false;
         }
 
         state.running = true;
-        state.pending = false;
+        state.cancel_requested = false;
         true
     }
 
-    pub async fn finish_run(&self) -> bool {
+    pub async fn request_cancel(&self) {
         let mut state = self.state.lock().await;
-        if state.pending {
-            state.pending = false;
-            state.running = true;
-            return true;
+        if state.running {
+            state.cancel_requested = true;
         }
+    }
 
+    pub async fn is_cancelled(&self) -> bool {
+        self.state.lock().await.cancel_requested
+    }
+
+    pub async fn finish_manual_run(&self) {
+        let mut state = self.state.lock().await;
         state.running = false;
-        false
+        state.cancel_requested = false;
     }
 }
 
@@ -89,54 +93,8 @@ pub async fn setup_app(app: tauri::AppHandle) -> anyhow::Result<()> {
     };
 
     app.manage(state);
-    start_background_indexing(&app);
 
     Ok(())
-}
-
-pub fn start_background_indexing(app_handle: &tauri::AppHandle) {
-    let handle = app_handle.clone();
-
-    tokio::spawn(async move {
-        start_background_indexing_inner(handle).await;
-    });
-}
-
-async fn start_background_indexing_inner(app_handle: tauri::AppHandle) {
-    let state = app_handle.state::<AppState>();
-
-    if !state.indexing.request_run().await {
-        tracing::debug!("Indexing already in progress, queued another run");
-        return;
-    }
-
-    let db = state.db.clone();
-    let vector_index = state.vector_index.clone();
-    let chinese_clip = state.chinese_clip.clone();
-    let indexing = state.indexing.clone();
-
-    tokio::spawn(async move {
-        loop {
-            tracing::info!("Starting background indexing...");
-            match application::search::auto_index_unindexed(
-                &db,
-                &vector_index,
-                &chinese_clip,
-                &app_handle,
-            )
-            .await
-            {
-                Ok(()) => tracing::info!("Background indexing completed"),
-                Err(e) => tracing::error!("Background indexing failed: {}", e),
-            }
-
-            if !indexing.finish_run().await {
-                break;
-            }
-
-            tracing::info!("Running queued background indexing request");
-        }
-    });
 }
 
 async fn load_vectors(

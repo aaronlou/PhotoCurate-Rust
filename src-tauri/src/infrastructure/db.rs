@@ -9,6 +9,7 @@ pub async fn init_db(app_data_dir: &std::path::Path) -> Result<Pool<Sqlite>> {
 
     let options = SqliteConnectOptions::from_str(&db_url)?
         .create_if_missing(true)
+        .foreign_keys(true)
         .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
         .synchronous(sqlx::sqlite::SqliteSynchronous::Normal);
 

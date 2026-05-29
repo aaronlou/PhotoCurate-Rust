@@ -1,12 +1,14 @@
 pub mod chinese_clip;
+mod evaluation;
 
-use crate::domain::models::{AiSettings, DimensionScore, ScoreResult};
+use crate::domain::models::{AiSettings, ScoreResult};
 use crate::error::{PhotoCurateError, Result};
 use anyhow::Context;
 use serde_json::json;
 use std::sync::Arc;
 
 pub use chinese_clip::ChineseClipService;
+pub use evaluation::{PhotoEvaluationPrompt, PHOTO_EVALUATION_PROMPT};
 
 /// Embed an image using the best available method.
 /// If local Chinese-CLIP model is available, use it. Otherwise fall back to Gemini API.
@@ -112,7 +114,7 @@ async fn score_image_gemini(
     let request_body = json!({
         "contents": [{
             "parts": [
-                {"text": score_prompt()},
+                {"text": PHOTO_EVALUATION_PROMPT.text},
                 {"inline_data": {"mime_type": mime_type, "data": base64_image}}
             ]
         }],
@@ -145,7 +147,7 @@ async fn score_image_gemini(
         .as_str()
         .context("missing response text")?;
 
-    parse_score_response(text)
+    evaluation::parse_score_response(text)
 }
 
 async fn score_image_openai_compatible_vision(
@@ -167,7 +169,7 @@ async fn score_image_openai_compatible_vision(
         "messages": [{
             "role": "user",
             "content": [
-                {"type": "text", "text": score_prompt()},
+                {"type": "text", "text": PHOTO_EVALUATION_PROMPT.text},
                 {"type": "image_url", "image_url": {"url": image_url}}
             ]
         }],
@@ -194,7 +196,7 @@ async fn score_image_openai_compatible_vision(
         .as_str()
         .context("missing response text")?;
 
-    parse_score_response(text)
+    evaluation::parse_score_response(text)
 }
 
 async fn embed_text_gemini(api_key: &str, text: &str) -> anyhow::Result<Vec<f64>> {
@@ -399,138 +401,6 @@ fn mime_type_for_path(path: &str) -> &'static str {
         "tiff" | "tif" => "image/tiff",
         _ => "image/jpeg",
     }
-}
-
-fn score_prompt() -> &'static str {
-    r#"You are a professional photography critic. Evaluate this photo on a 0-100 scale.
-
-Assess:
-- Composition and framing
-- Lighting and exposure
-- Color harmony
-- Subject clarity
-- Technical quality
-- Mood and storytelling
-
-Respond with compact JSON only, in Chinese for all prose:
-{
-  "score": 86,
-  "summary": "2-3 sentences with the overall judgment.",
-  "strengths": ["specific strength 1", "specific strength 2"],
-  "weaknesses": ["specific weakness 1"],
-  "suggestions": ["actionable suggestion 1", "actionable suggestion 2"],
-  "dimension_scores": [
-    {"name": "构图", "score": 82, "note": "short note"},
-    {"name": "光线", "score": 88, "note": "short note"},
-    {"name": "色彩", "score": 84, "note": "short note"},
-    {"name": "主体", "score": 80, "note": "short note"},
-    {"name": "技术", "score": 86, "note": "short note"},
-    {"name": "叙事", "score": 78, "note": "short note"}
-  ],
-  "tags": ["自然光", "明确主体"]
-}"#
-}
-
-fn parse_score_response(text: &str) -> anyhow::Result<ScoreResult> {
-    if let Ok(result) = parse_json_score_response(text) {
-        return Ok(result);
-    }
-
-    let score_line = text
-        .lines()
-        .find(|l| l.to_lowercase().contains("score:"))
-        .context("missing score line")?;
-
-    let score: f64 = score_line
-        .split(':')
-        .nth(1)
-        .context("invalid score format")?
-        .trim()
-        .split_whitespace()
-        .next()
-        .context("invalid score format")?
-        .parse()
-        .context("failed to parse score")?;
-
-    let review = text
-        .lines()
-        .find(|l| l.to_lowercase().contains("review:"))
-        .map(|l| l.split(':').nth(1).unwrap_or("").trim().to_string())
-        .unwrap_or_default();
-
-    let mut result = ScoreResult::from_score_and_review(score, review);
-    result.raw_response = text.to_string();
-    Ok(result)
-}
-
-fn parse_json_score_response(text: &str) -> anyhow::Result<ScoreResult> {
-    let trimmed = text.trim();
-    let json_text = if let Some(start) = trimmed.find('{') {
-        if let Some(end) = trimmed.rfind('}') {
-            &trimmed[start..=end]
-        } else {
-            trimmed
-        }
-    } else {
-        trimmed
-    };
-
-    let json: serde_json::Value = serde_json::from_str(json_text)?;
-    let score = json["score"].as_f64().context("missing score")?;
-    let summary = json["summary"]
-        .as_str()
-        .or_else(|| json["review"].as_str())
-        .unwrap_or("")
-        .to_string();
-    let review = json["review"].as_str().unwrap_or(&summary).to_string();
-
-    Ok(ScoreResult {
-        score,
-        review,
-        summary,
-        strengths: parse_string_array(&json["strengths"]),
-        weaknesses: parse_string_array(&json["weaknesses"]),
-        suggestions: parse_string_array(&json["suggestions"]),
-        dimension_scores: parse_dimension_scores(&json["dimension_scores"]),
-        tags: parse_string_array(&json["tags"]),
-        raw_response: text.to_string(),
-    })
-}
-
-fn parse_string_array(value: &serde_json::Value) -> Vec<String> {
-    value
-        .as_array()
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(|item| item.as_str().map(|s| s.trim().to_string()))
-                .filter(|s| !s.is_empty())
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-fn parse_dimension_scores(value: &serde_json::Value) -> Vec<DimensionScore> {
-    value
-        .as_array()
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(|item| {
-                    let name = item["name"].as_str()?.trim().to_string();
-                    if name.is_empty() {
-                        return None;
-                    }
-                    let score = item["score"].as_f64()?;
-                    let note = item["note"]
-                        .as_str()
-                        .map(|s| s.trim().to_string())
-                        .filter(|s| !s.is_empty());
-                    Some(DimensionScore { name, score, note })
-                })
-                .collect()
-        })
-        .unwrap_or_default()
 }
 
 fn model_or_default<'a>(model: &'a str, provider: &str) -> &'a str {

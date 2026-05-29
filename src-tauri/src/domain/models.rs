@@ -136,6 +136,49 @@ pub struct PhotoEvaluation {
     pub created_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScoringFailure {
+    pub photo_id: String,
+    pub file_name: String,
+    pub error: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScoringRunResult {
+    pub total_count: usize,
+    pub success_count: usize,
+    pub failed_count: usize,
+    pub failures: Vec<ScoringFailure>,
+}
+
+impl ScoringRunResult {
+    pub fn new(total_count: usize) -> Self {
+        Self {
+            total_count,
+            success_count: 0,
+            failed_count: 0,
+            failures: vec![],
+        }
+    }
+
+    pub fn record_success(&mut self) {
+        self.success_count += 1;
+    }
+
+    pub fn record_failure(&mut self, photo_id: String, file_name: String, error: String) {
+        self.failed_count += 1;
+        self.failures.push(ScoringFailure {
+            photo_id,
+            file_name,
+            error,
+        });
+    }
+
+    pub fn all_failed(&self) -> bool {
+        self.total_count > 0 && self.success_count == 0 && self.failed_count > 0
+    }
+}
+
 impl PhotoEvaluation {
     pub fn from_score_result(
         photo_id: String,

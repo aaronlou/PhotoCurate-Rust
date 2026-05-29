@@ -1,7 +1,7 @@
 use crate::application;
 use crate::application::ports::VectorIndexStore;
 use crate::domain::models::{
-    AiSettings, Directory, ExportResult, LibraryInsights, Photo, SearchResult,
+    AiSettings, Directory, ExportResult, LibraryInsights, Photo, ScoringRunResult, SearchResult,
 };
 use crate::error::PhotoCurateError;
 use crate::AppState;
@@ -19,12 +19,8 @@ pub async fn pick_directory() -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
-pub async fn add_directory(
-    state: State<'_, AppState>,
-    app_handle: tauri::AppHandle,
-    path: String,
-) -> Result<Directory, String> {
-    let result = map_err(
+pub async fn add_directory(state: State<'_, AppState>, path: String) -> Result<Directory, String> {
+    map_err(
         application::directory::add_directory(
             &state.db,
             &state.thumbnail_dir,
@@ -32,9 +28,7 @@ pub async fn add_directory(
             path,
         )
         .await,
-    )?;
-    application::bootstrap::start_background_indexing(&app_handle);
-    Ok(result)
+    )
 }
 
 #[tauri::command]
@@ -44,7 +38,16 @@ pub async fn get_directories(state: State<'_, AppState>) -> Result<Vec<Directory
 
 #[tauri::command]
 pub async fn remove_directory(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    map_err(application::directory::remove_directory(&state.db, &state.monitors, id).await)
+    map_err(application::directory::remove_directory(&state.db, &state.monitors, id).await)?;
+
+    if let Err(e) = application::search::reload_vector_index(&state.db, &state.vector_index).await {
+        tracing::warn!(
+            "Failed to reload vector index after directory removal: {}",
+            e
+        );
+    }
+
+    Ok(())
 }
 
 // ==================== Photo Commands ====================
@@ -78,14 +81,11 @@ pub async fn get_thumbnail_path(
 #[tauri::command]
 pub async fn start_scanning(
     state: State<'_, AppState>,
-    app_handle: tauri::AppHandle,
     directory_id: String,
 ) -> Result<(), String> {
     map_err(
         application::photo::scan_directory(&state.db, &state.thumbnail_dir, &directory_id).await,
-    )?;
-    application::bootstrap::start_background_indexing(&app_handle);
-    Ok(())
+    )
 }
 
 // ==================== Scoring ====================
@@ -96,7 +96,7 @@ pub async fn score_photos(
     app_handle: tauri::AppHandle,
     photo_ids: Vec<String>,
     allow_keychain_read: Option<bool>,
-) -> Result<(), String> {
+) -> Result<ScoringRunResult, String> {
     map_err(
         application::scoring::score_photos(
             &state.db,
@@ -113,19 +113,33 @@ pub async fn score_photos(
 #[tauri::command]
 pub async fn build_search_index(
     state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
     photo_ids: Vec<String>,
     allow_keychain_read: Option<bool>,
-) -> Result<(), String> {
-    map_err(
-        application::search::build_index(
-            &state.db,
-            &state.vector_index,
-            &state.chinese_clip,
-            photo_ids,
-            allow_keychain_read.unwrap_or(false),
-        )
-        .await,
+) -> Result<usize, String> {
+    if !state.indexing.start_manual_run().await {
+        return Err("已有索引任务正在运行".into());
+    }
+
+    let result = application::search::build_index(
+        &state.db,
+        &state.vector_index,
+        &state.chinese_clip,
+        &app_handle,
+        &state.indexing,
+        photo_ids,
+        allow_keychain_read.unwrap_or(false),
     )
+    .await;
+    state.indexing.finish_manual_run().await;
+
+    map_err(result)
+}
+
+#[tauri::command]
+pub async fn cancel_search_indexing(state: State<'_, AppState>) -> Result<(), String> {
+    state.indexing.request_cancel().await;
+    Ok(())
 }
 
 // ==================== Search ====================
@@ -205,16 +219,22 @@ pub async fn rebuild_all_index(
     app_handle: tauri::AppHandle,
     allow_keychain_read: Option<bool>,
 ) -> Result<usize, String> {
-    map_err(
-        application::search::rebuild_all_index(
-            &state.db,
-            &state.vector_index,
-            &state.chinese_clip,
-            &app_handle,
-            allow_keychain_read.unwrap_or(false),
-        )
-        .await,
+    if !state.indexing.start_manual_run().await {
+        return Err("已有索引任务正在运行".into());
+    }
+
+    let result = application::search::rebuild_all_index(
+        &state.db,
+        &state.vector_index,
+        &state.chinese_clip,
+        &app_handle,
+        &state.indexing,
+        allow_keychain_read.unwrap_or(false),
     )
+    .await;
+    state.indexing.finish_manual_run().await;
+
+    map_err(result)
 }
 
 #[tauri::command]

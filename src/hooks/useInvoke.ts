@@ -3,7 +3,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { open } from "@tauri-apps/plugin-dialog";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
-import { Photo, Directory, AISettings, SearchResult, ExportResult, PhotoSortOrder, ScoringProvider, LibraryInsights, AppUpdateDownloadEvent, AppUpdateInfo } from "@/types";
+import { Photo, Directory, AISettings, SearchResult, ExportResult, PhotoSortOrder, ScoringProvider, LibraryInsights, AppUpdateDownloadEvent, AppUpdateInfo, ScoringRunResult } from "@/types";
 
 const STATE_RETRY_ATTEMPTS = 20;
 const STATE_RETRY_DELAY_MS = 250;
@@ -76,13 +76,17 @@ export async function startScanning(directoryId: string): Promise<void> {
 }
 
 // Scoring
-export async function scorePhotos(photoIds: string[], allowKeychainRead = false): Promise<void> {
+export async function scorePhotos(photoIds: string[], allowKeychainRead = false): Promise<ScoringRunResult> {
   return invokeCommand("score_photos", { photoIds, allowKeychainRead });
 }
 
 // Search Index
-export async function buildSearchIndex(photoIds: string[], allowKeychainRead = false): Promise<void> {
+export async function buildSearchIndex(photoIds: string[], allowKeychainRead = false): Promise<number> {
   return invokeCommand("build_search_index", { photoIds, allowKeychainRead });
+}
+
+export async function cancelSearchIndexing(): Promise<void> {
+  return invokeCommand("cancel_search_indexing");
 }
 
 // Search

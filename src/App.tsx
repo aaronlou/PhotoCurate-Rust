@@ -14,7 +14,6 @@ function App() {
   const currentView = useAppStore((s) => s.currentView);
   const photoSortOrder = useAppStore((s) => s.photoSortOrder);
   const loadLibrary = useAppStore((s) => s.loadLibrary);
-  const refreshPhotos = useAppStore((s) => s.refreshPhotos);
   const setIsIndexing = useAppStore((s) => s.setIsIndexing);
   const setIndexProgress = useAppStore((s) => s.setIndexProgress);
   const setIsScoring = useAppStore((s) => s.setIsScoring);
@@ -33,15 +32,15 @@ function App() {
       } else {
         setIsIndexing(false);
         setIndexProgress(null);
-        if (status === "complete") {
-          refreshPhotos(photoSortOrder).catch(console.error);
+        if (status === "complete" || status === "cancelled") {
+          loadLibrary().catch(console.error);
         }
       }
     });
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, [setIsIndexing, setIndexProgress, refreshPhotos, photoSortOrder]);
+  }, [setIsIndexing, setIndexProgress, loadLibrary]);
 
   useEffect(() => {
     const unlisten = listen<IndexingProgress>("scoring-progress", (event) => {
@@ -51,13 +50,13 @@ function App() {
       } else if (status === "complete") {
         setIsScoring(false);
         setScoreProgress(null);
-        refreshPhotos(photoSortOrder).catch(console.error);
+        loadLibrary().catch(console.error);
       }
     });
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, [setIsScoring, setScoreProgress, refreshPhotos, photoSortOrder]);
+  }, [setIsScoring, setScoreProgress, loadLibrary]);
 
   return (
     <div className="flex h-screen w-screen bg-white">

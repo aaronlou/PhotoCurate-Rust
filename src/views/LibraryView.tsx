@@ -1,8 +1,12 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAppStore } from "@/stores/useAppStore";
 import { pickDirectory } from "@/hooks/useInvoke";
 import {
+  AlertCircle,
   FolderPlus,
+  Folder,
+  FolderOpen,
+  Folders,
   LayoutGrid,
   List,
   Image as ImageIcon,
@@ -11,19 +15,26 @@ import {
   CalendarDays,
   ChevronDown,
   Sparkles,
+  Trash2,
   WandSparkles,
 } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import type { Photo } from "@/types";
+import type { Directory, Photo } from "@/types";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+function directoryName(path: string) {
+  const normalized = path.replace(/\/+$/, "");
+  return normalized.split("/").pop() || normalized || path;
+}
+
 export default function LibraryView() {
   const photos = useAppStore((s) => s.photos);
+  const directories = useAppStore((s) => s.directories);
   const selectedPhoto = useAppStore((s) => s.selectedPhoto);
   const setSelectedPhoto = useAppStore((s) => s.setSelectedPhoto);
   const setCurrentView = useAppStore((s) => s.setCurrentView);
@@ -31,10 +42,53 @@ export default function LibraryView() {
   const setViewMode = useAppStore((s) => s.setViewMode);
   const photoSortOrder = useAppStore((s) => s.photoSortOrder);
   const addDirectoryAndRefresh = useAppStore((s) => s.addDirectoryAndRefresh);
+  const removeDirectoryAndRefresh = useAppStore((s) => s.removeDirectoryAndRefresh);
   const changePhotoSortOrder = useAppStore((s) => s.changePhotoSortOrder);
+  const loadLibrary = useAppStore((s) => s.loadLibrary);
   const [isAdding, setIsAdding] = useState(false);
+  const [removingDirectoryId, setRemovingDirectoryId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showSortMenu, setShowSortMenu] = useState(false);
+  const [selectedDirectoryId, setSelectedDirectoryId] = useState<string>("all");
+
+  useEffect(() => {
+    loadLibrary().catch((error) => {
+      console.error("Load library failed:", error);
+      setErrorMsg(
+        typeof error === "string"
+          ? error
+          : error?.message || "加载图库失败，请稍后重试"
+      );
+    });
+  }, [loadLibrary]);
+
+  const directoryPhotoCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const photo of photos) {
+      if (photo.directory_id) {
+        counts.set(photo.directory_id, (counts.get(photo.directory_id) ?? 0) + 1);
+      }
+    }
+    return counts;
+  }, [photos]);
+
+  const selectedDirectory =
+    selectedDirectoryId === "all"
+      ? null
+      : directories.find((directory) => directory.id === selectedDirectoryId) ?? null;
+
+  const visiblePhotos = useMemo(() => {
+    if (selectedDirectoryId === "all") {
+      return photos;
+    }
+    return photos.filter((photo) => photo.directory_id === selectedDirectoryId);
+  }, [photos, selectedDirectoryId]);
+
+  useEffect(() => {
+    if (selectedDirectoryId !== "all" && !directories.some((directory) => directory.id === selectedDirectoryId)) {
+      setSelectedDirectoryId("all");
+    }
+  }, [directories, selectedDirectoryId]);
 
   const handleAddDirectory = async () => {
     setIsAdding(true);
@@ -49,6 +103,40 @@ export default function LibraryView() {
       setErrorMsg(typeof e === "string" ? e : e?.message || "添加文件夹失败，请检查控制台日志");
     } finally {
       setIsAdding(false);
+    }
+  };
+
+  const handleSelectDirectory = (directoryId: string) => {
+    setSelectedDirectoryId(directoryId);
+    if (directoryId !== "all" && selectedPhoto?.directory_id !== directoryId) {
+      setSelectedPhoto(null);
+    }
+  };
+
+  const handleRemoveDirectory = async (event: React.MouseEvent, directory: Directory) => {
+    event.stopPropagation();
+    const confirmed = window.confirm(
+      `从图库移出“${directoryName(directory.path)}”？\n不会删除磁盘上的照片。`
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setRemovingDirectoryId(directory.id);
+    setErrorMsg(null);
+    try {
+      await removeDirectoryAndRefresh(directory.id);
+      if (selectedDirectoryId === directory.id) {
+        setSelectedDirectoryId("all");
+      }
+      if (selectedPhoto?.directory_id === directory.id) {
+        setSelectedPhoto(null);
+      }
+    } catch (e: any) {
+      console.error("Remove directory failed:", e);
+      setErrorMsg(typeof e === "string" ? e : e?.message || "移出文件夹失败，请检查控制台日志");
+    } finally {
+      setRemovingDirectoryId(null);
     }
   };
 
@@ -67,10 +155,11 @@ export default function LibraryView() {
       : photoSortOrder === "score_asc"
       ? "评分从低到高"
       : "按时间排序";
-  const missingEvaluationCount = photos.filter((p) => !p.latest_evaluation).length;
-  const evaluatedCount = photos.filter((p) => p.latest_evaluation).length;
+  const missingEvaluationCount = visiblePhotos.filter((p) => !p.latest_evaluation).length;
+  const evaluatedCount = visiblePhotos.filter((p) => p.latest_evaluation).length;
+  const selectedScopeLabel = selectedDirectory ? directoryName(selectedDirectory.path) : "全部照片";
 
-  if (photos.length === 0) {
+  if (directories.length === 0 && photos.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-gray-500">
         <ImageIcon size={48} strokeWidth={1.2} className="mb-4 text-gray-300" />
@@ -96,7 +185,10 @@ export default function LibraryView() {
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100">
         <div className="flex items-center gap-3">
-          <span className="text-[11px] text-gray-400">{photos.length} 张照片</span>
+          <span className="text-[11px] font-medium text-gray-600">{selectedScopeLabel}</span>
+          <span className="text-[11px] text-gray-400">
+            {visiblePhotos.length} 张照片 / {directories.length} 个文件夹
+          </span>
           {missingEvaluationCount > 0 && (
             <button
               type="button"
@@ -205,10 +297,102 @@ export default function LibraryView() {
 
       {/* Content */}
       <div className="flex-1 min-h-0 flex">
+        <aside className="w-[280px] shrink-0 overflow-auto border-r border-gray-100 bg-gray-50/70 px-3 py-3">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+              <Folders size={16} />
+              源文件夹
+            </div>
+            <button
+              type="button"
+              onClick={handleAddDirectory}
+              disabled={isAdding}
+              title="添加文件夹"
+              className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-800 disabled:opacity-50"
+            >
+              <FolderPlus size={15} />
+            </button>
+          </div>
+
+          <div className="space-y-1">
+            <button
+              type="button"
+              onClick={() => handleSelectDirectory("all")}
+              className={cn(
+                "flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors",
+                selectedDirectoryId === "all"
+                  ? "bg-white text-blue-700 shadow-sm ring-1 ring-blue-100"
+                  : "text-gray-600 hover:bg-white"
+              )}
+            >
+              <Folders size={15} />
+              <span className="min-w-0 flex-1 truncate">全部照片</span>
+              <span className="shrink-0 text-[11px] text-gray-400">{photos.length}</span>
+            </button>
+
+            {directories.map((directory) => {
+              const isActive = selectedDirectoryId === directory.id;
+              const count = directoryPhotoCounts.get(directory.id) ?? 0;
+
+              return (
+                <div
+                  key={directory.id}
+                  className={cn(
+                    "group flex items-center gap-1 rounded-md transition-colors",
+                    isActive
+                      ? "bg-white text-blue-700 shadow-sm ring-1 ring-blue-100"
+                      : "text-gray-600 hover:bg-white"
+                  )}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleSelectDirectory(directory.id)}
+                    className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-2 text-left"
+                  >
+                    {isActive ? <FolderOpen size={15} /> : <Folder size={15} />}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium">{directoryName(directory.path)}</span>
+                      <span className="block truncate text-[11px] text-gray-400">{directory.path}</span>
+                    </span>
+                    <span className="shrink-0 text-[11px] text-gray-400">{count}</span>
+                  </button>
+                  <button
+                    type="button"
+                    title="移出文件夹"
+                    onClick={(event) => handleRemoveDirectory(event, directory)}
+                    disabled={removingDirectoryId === directory.id}
+                    className={cn(
+                      "mr-1 shrink-0 rounded p-1 text-gray-300 opacity-0 hover:bg-red-50 hover:text-red-600 group-hover:opacity-100 disabled:pointer-events-none disabled:opacity-50",
+                      isActive && "opacity-100",
+                    )}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          {errorMsg && (
+            <div className="mt-3 flex items-start gap-1.5 rounded-md bg-red-50 px-2.5 py-2 text-xs leading-5 text-red-600">
+              <AlertCircle size={14} className="mt-0.5 shrink-0" />
+              <span>{errorMsg}</span>
+            </div>
+          )}
+        </aside>
+
         <div className="flex-1 overflow-auto p-4 scrollbar-thin">
-          {viewMode === "grid" ? (
+          {visiblePhotos.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center text-gray-500">
+              <ImageIcon size={40} strokeWidth={1.2} className="mb-3 text-gray-300" />
+              <h2 className="mb-1 text-sm font-medium text-gray-700">暂无照片</h2>
+              <p className="text-xs text-gray-400">
+                {selectedDirectory ? "这个文件夹里还没有可识别的照片" : "已添加文件夹，但还没有可识别的照片"}
+              </p>
+            </div>
+          ) : viewMode === "grid" ? (
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
-              {photos.map((photo) => (
+              {visiblePhotos.map((photo) => (
                 <div
                   key={photo.id}
                   onClick={() => setSelectedPhoto(photo)}
@@ -244,7 +428,7 @@ export default function LibraryView() {
             </div>
           ) : (
             <div className="space-y-1">
-              {photos.map((photo) => (
+              {visiblePhotos.map((photo) => (
                 <div
                   key={photo.id}
                   onClick={() => setSelectedPhoto(photo)}

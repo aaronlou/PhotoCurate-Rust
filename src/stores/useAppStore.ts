@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { Photo, Directory, AISettings, ViewMode, NavItem, PhotoSortOrder } from "@/types";
-import { addDirectory, getDirectories, getPhotos } from "@/hooks/useInvoke";
+import { addDirectory, getDirectories, getPhotos, removeDirectory } from "@/hooks/useInvoke";
 
 interface AppState {
   currentView: NavItem;
@@ -17,6 +17,7 @@ interface AppState {
   refreshDirectories: () => Promise<Directory[]>;
   loadLibrary: () => Promise<void>;
   addDirectoryAndRefresh: (path: string) => Promise<Directory>;
+  removeDirectoryAndRefresh: (id: string) => Promise<void>;
 
   viewMode: ViewMode;
   setViewMode: (mode: ViewMode) => void;
@@ -92,6 +93,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     ]);
     set((state) => ({ directories, ...syncSelectedPhoto(photos, state.selectedPhoto) }));
     return directory;
+  },
+  removeDirectoryAndRefresh: async (id) => {
+    await removeDirectory(id);
+    const [directories, photos] = await Promise.all([
+      getDirectories(),
+      getPhotos(get().photoSortOrder),
+    ]);
+    set((state) => ({ directories, ...syncSelectedPhoto(photos, state.selectedPhoto) }));
   },
 
   viewMode: "grid",

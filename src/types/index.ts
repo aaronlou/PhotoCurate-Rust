@@ -77,6 +77,19 @@ export interface ScoreResult {
   raw_response: string;
 }
 
+export interface ScoringFailure {
+  photo_id: string;
+  file_name: string;
+  error: string;
+}
+
+export interface ScoringRunResult {
+  total_count: number;
+  success_count: number;
+  failed_count: number;
+  failures: ScoringFailure[];
+}
+
 export interface DimensionScore {
   name: string;
   score: number;
@@ -171,7 +184,7 @@ export interface ScoreTrend {
 export interface IndexingProgress {
   current: number;
   total: number;
-  status: "started" | "indexing" | "complete" | "unavailable" | "failed";
+  status: "started" | "indexing" | "complete" | "cancelled" | "unavailable" | "failed";
 }
 
 export type ViewMode = "grid" | "list";

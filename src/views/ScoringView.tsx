@@ -41,6 +41,8 @@ export default function ScoringView() {
   const [scoreError, setScoreError] = useState<string | null>(null);
   const [scoreNotice, setScoreNotice] = useState<string | null>(null);
   const [analysisComplete, setAnalysisComplete] = useState(false);
+  const [lastRunSummary, setLastRunSummary] = useState<string | null>(null);
+  const [lastRunHadFailures, setLastRunHadFailures] = useState(false);
   const [allowSavedKeyRead, setAllowSavedKeyRead] = useState(false);
   const [scoringScope, setScoringScope] = useState<"missing_evaluation" | "all">("missing_evaluation");
   const [serviceMode, setServiceMode] = useState<AiServiceMode>(() => readStoredAiServiceMode() ?? "photocurate_ai");
@@ -97,13 +99,21 @@ export default function ScoringView() {
     setScoreError(null);
     setScoreNotice(null);
     setAnalysisComplete(false);
+    setLastRunSummary(null);
+    setLastRunHadFailures(false);
     setIsScoring(true);
     setScoreProgress({ current: 0, total: targets.length });
 
     try {
-      await scorePhotos(targets.map((p) => p.id), true);
+      const result = await scorePhotos(targets.map((p) => p.id), true);
       await refreshPhotos(photoSortOrder);
       setAnalysisComplete(true);
+      setLastRunHadFailures(result.failed_count > 0);
+      if (result.failed_count > 0) {
+        setLastRunSummary(`已完成 ${result.success_count} 张，${result.failed_count} 张失败。`);
+      } else {
+        setLastRunSummary(`已完成 ${result.success_count} 张作品分析。`);
+      }
     } catch (e) {
       setScoreError(typeof e === "string" ? e : String(e));
       setScoreNotice(null);
@@ -254,10 +264,18 @@ export default function ScoringView() {
           )}
 
           {analysisComplete && (
-            <div className="mt-4 flex items-center justify-between gap-4 rounded-md border border-green-200 bg-green-50 px-3 py-3">
-              <div className="flex items-center gap-2 text-sm text-green-800">
-                <Sparkles size={15} />
-                分析已完成，可以查看更新后的作品洞察。
+            <div
+              className={`mt-4 flex items-center justify-between gap-4 rounded-md border px-3 py-3 ${
+                lastRunHadFailures ? "border-amber-200 bg-amber-50" : "border-green-200 bg-green-50"
+              }`}
+            >
+              <div
+                className={`flex items-center gap-2 text-sm ${
+                  lastRunHadFailures ? "text-amber-800" : "text-green-800"
+                }`}
+              >
+                {lastRunHadFailures ? <AlertCircle size={15} /> : <Sparkles size={15} />}
+                {lastRunSummary ?? "分析已完成，可以查看更新后的作品洞察。"}
               </div>
               <button
                 type="button"

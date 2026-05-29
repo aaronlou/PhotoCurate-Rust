@@ -23,6 +23,9 @@ pub enum PhotoCurateError {
     #[error("API key not configured")]
     ApiKeyMissing,
 
+    #[error("all scoring attempts failed: {0}")]
+    ScoringRunFailed(String),
+
     #[error("embedding service not configured")]
     EmbeddingServiceMissing,
 
