@@ -1,6 +1,6 @@
 [package]
 name = "photo-curate"
-version = "0.1.6"
+version = "0.1.7"
 description = "AI-powered photo curation and scoring"
 authors = ["SIYUAN LOU"]
 license = "GPL-3.0-only OR LicenseRef-PhotoCurate-Commercial"
