@@ -23,10 +23,19 @@ import {
   readStoredAiServiceMode,
   resolveInitialAiServiceMode,
 } from "@/lib/aiService";
-import { billingStatusLabel, formatCredits } from "@/lib/billing";
+import { billingStatusTranslationKey, formatCredits } from "@/lib/billing";
+import { useI18n, type TranslationKey } from "@/lib/i18n";
 import type { BillingStatus } from "@/types";
 
+function localizedProviderLabel(provider: ReturnType<typeof providerConfig>, t: (key: TranslationKey) => string) {
+  if (provider.id === "openai_compatible_vision") {
+    return t("provider.openai_compatible_vision.label");
+  }
+  return provider.label;
+}
+
 export default function ScoringView() {
+  const { t } = useI18n();
   const photos = useAppStore((s) => s.photos);
   const refreshPhotos = useAppStore((s) => s.refreshPhotos);
   const aiSettings = useAppStore((s) => s.aiSettings);
@@ -85,9 +94,9 @@ export default function ScoringView() {
       setScoreError(null);
       setScoreNotice(
         canUseManagedAi
-          ? "订阅权益已识别，但 PhotoCurate AI 托管评分执行服务尚未接入。当前版本请先切换到“自带 API Key”生成评价。"
+          ? t("scoring.managedRuntimePendingWithSubscription")
           : billingStatus?.message ??
-              "PhotoCurate AI 托管订阅还未配置。当前版本请到 AI 服务页切换为“自带 API Key”。"
+              t("scoring.managedNotConfigured")
       );
       return;
     }
@@ -97,13 +106,13 @@ export default function ScoringView() {
 
     if (!hasScoringKey) {
       setScoreError(null);
-      setScoreNotice("请先到 AI 服务页填写并验证 API Key，再开始生成评价。");
+      setScoreNotice(t("scoring.missingApiKeyNotice"));
       return;
     }
 
     if (!allowSavedKeyRead) {
       setScoreError(null);
-      setScoreNotice("即将读取已保存的 API Key。请先勾选下方说明，确认后再开始评分。");
+      setScoreNotice(t("scoring.savedKeyNotice"));
       return;
     }
 
@@ -121,9 +130,11 @@ export default function ScoringView() {
       setAnalysisComplete(true);
       setLastRunHadFailures(result.failed_count > 0);
       if (result.failed_count > 0) {
-        setLastRunSummary(`已完成 ${result.success_count} 张，${result.failed_count} 张失败。`);
+        setLastRunSummary(
+          t("scoring.runPartialComplete", { success: result.success_count, failed: result.failed_count })
+        );
       } else {
-        setLastRunSummary(`已完成 ${result.success_count} 张作品分析。`);
+        setLastRunSummary(t("scoring.runComplete", { count: result.success_count }));
       }
     } catch (e) {
       setScoreError(typeof e === "string" ? e : String(e));
@@ -140,15 +151,15 @@ export default function ScoringView() {
           <div>
             <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-800">
               <Star size={20} className="text-amber-500" />
-              作品分析
+              {t("scoring.title")}
             </h2>
             <p className="mt-1 text-sm text-gray-500">
-              补全评分、点评、标签和维度数据，为洞察、检索和精选导出提供基础
+              {t("scoring.subtitle")}
             </p>
             {localModelAvailable !== null && (
               <div className={`mt-2 flex items-center gap-1.5 text-xs ${localModelAvailable ? "text-green-600" : "text-amber-600"}`}>
                 <Cpu size={12} />
-                {localModelAvailable ? "本地 Chinese-CLIP 模型已加载" : "本地模型未加载，搜索将使用 Gemini API"}
+                {localModelAvailable ? t("scoring.localModelLoaded") : t("scoring.localModelMissing")}
               </div>
             )}
           </div>
@@ -158,7 +169,7 @@ export default function ScoringView() {
             className="flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
           >
             <Settings size={14} />
-            管理 AI 服务
+            {t("scoring.manageAiService")}
           </button>
         </div>
       </header>
@@ -167,7 +178,7 @@ export default function ScoringView() {
         <div className="mb-5 grid grid-cols-[1fr_0.85fr] gap-4">
           <ServiceSummaryCard
             serviceMode={serviceMode}
-            providerLabel={activeProvider.label}
+            providerLabel={localizedProviderLabel(activeProvider, t)}
             configuredModel={configuredModel}
             hasScoringKey={hasScoringKey}
             canUseManagedAi={canUseManagedAi}
@@ -176,14 +187,14 @@ export default function ScoringView() {
             onManage={() => setCurrentView("ai_service")}
           />
           <div className="rounded-lg border border-gray-200 bg-white p-4">
-            <p className="text-xs font-medium text-gray-500">索引状态</p>
+            <p className="text-xs font-medium text-gray-500">{t("scoring.indexStatus")}</p>
             <p className="mt-2 text-2xl font-semibold tracking-tight text-gray-900">
               {indexedCount}/{photos.length}
             </p>
             <p className="mt-1 text-xs text-gray-400">
               {isIndexing && indexProgress
-                ? `后台索引中 ${indexProgress.current}/${indexProgress.total}`
-                : "用于自然语言检索的向量索引"}
+                ? t("scoring.backgroundIndexing", { current: indexProgress.current, total: indexProgress.total })
+                : t("scoring.vectorIndex")}
             </p>
           </div>
         </div>
@@ -197,8 +208,7 @@ export default function ScoringView() {
               className="mt-0.5"
             />
             <span>
-              开始评分时会从 macOS 钥匙串读取 PhotoCurate 保存的 {activeProvider.label} API Key，
-              只用于本次连接 {activeProvider.label} 评分服务；不会读取其他钥匙串项目，也不会把 Key 显示在界面上。
+              {t("scoring.keychainConsent", { provider: localizedProviderLabel(activeProvider, t) })}
             </span>
           </label>
         )}
@@ -207,12 +217,12 @@ export default function ScoringView() {
           <div className="flex items-center justify-between gap-5">
             <div>
               <p className="text-sm text-gray-600">
-                待生成评价: <span className="font-semibold text-gray-800">{pendingEvaluationCount}</span> 张
+                {t("scoring.pendingEvaluations", { count: pendingEvaluationCount })}
               </p>
               <p className="mt-1 text-xs text-gray-400">
-                仅有旧评分: {legacyScoreOnlyCount} 张
+                {t("scoring.legacyScoreOnly", { count: legacyScoreOnlyCount })}
                 <span className="mx-1 text-gray-300">/</span>
-                已有评价: {evaluatedCount} 张
+                {t("scoring.evaluated", { count: evaluatedCount })}
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -226,7 +236,7 @@ export default function ScoringView() {
                       : "text-gray-500 hover:text-gray-700"
                   }`}
                 >
-                  补全缺失
+                  {t("scoring.fillMissing")}
                 </button>
                 <button
                   type="button"
@@ -237,7 +247,7 @@ export default function ScoringView() {
                       : "text-gray-500 hover:text-gray-700"
                   }`}
                 >
-                  重新评价全部
+                  {t("scoring.rescoreAll")}
                 </button>
               </div>
               <button
@@ -251,23 +261,23 @@ export default function ScoringView() {
               >
                 <Play size={16} />
                 {isScoring
-                  ? "评价中..."
+                  ? t("scoring.evaluating")
                   : serviceMode === "photocurate_ai"
                   ? canUseManagedAi && managedAiRuntimeAvailable
-                    ? "生成评价"
+                    ? t("scoring.generateEvaluation")
                     : canUseManagedAi
-                    ? "服务待接入"
-                    : "需要订阅"
+                    ? t("scoring.runtimePending")
+                    : t("scoring.subscriptionNeeded")
                   : scoringScope === "all"
-                  ? "重新评价"
-                  : "生成评价"}
+                  ? t("scoring.rescore")
+                  : t("scoring.generateEvaluation")}
               </button>
             </div>
           </div>
 
           <p className="mt-3 text-xs text-gray-400">
-            本次队列: {scoringTargetCount} 张
-            {scoringScope === "all" && "，会重新调用 AI 并更新评分"}
+            {t("scoring.queue", { count: scoringTargetCount })}
+            {scoringScope === "all" && t("scoring.rescoreNote")}
           </p>
 
           {scoreError && (
@@ -296,7 +306,7 @@ export default function ScoringView() {
                 }`}
               >
                 {lastRunHadFailures ? <AlertCircle size={15} /> : <Sparkles size={15} />}
-                {lastRunSummary ?? "分析已完成，可以查看更新后的作品洞察。"}
+                {lastRunSummary ?? t("scoring.completeDefault")}
               </div>
               <button
                 type="button"
@@ -304,7 +314,7 @@ export default function ScoringView() {
                 className="flex items-center gap-1.5 rounded-md bg-green-600 px-3 py-2 text-xs font-medium text-white hover:bg-green-700"
               >
                 <BarChart3 size={14} />
-                查看洞察
+                {t("scoring.viewInsights")}
               </button>
             </div>
           )}
@@ -312,7 +322,7 @@ export default function ScoringView() {
           {isScoring && scoreProgress && (
             <div className="mt-4">
               <div className="mb-1 flex justify-between text-xs text-gray-500">
-                <span>评价进度</span>
+                <span>{t("scoring.progress")}</span>
                 <span>
                   {scoreProgress.current} / {scoreProgress.total}
                 </span>
@@ -352,16 +362,17 @@ function ServiceSummaryCard({
   billingStatus: BillingStatus | null;
   onManage: () => void;
 }) {
+  const { t } = useI18n();
   const isManaged = serviceMode === "photocurate_ai";
   const statusText = isManaged
     ? canUseManagedAi
       ? managedAiRuntimeAvailable
-        ? "可用"
-        : "权益有效"
+        ? t("scoring.statusAvailable")
+        : t("scoring.statusEntitled")
       : billingStatus
-      ? billingStatusLabel(billingStatus.status)
-      : "检测中"
-    : hasScoringKey ? "已配置" : "未配置";
+      ? t(billingStatusTranslationKey(billingStatus.status))
+      : t("scoring.statusChecking")
+    : hasScoringKey ? t("scoring.statusConfigured") : t("scoring.statusNotConfigured");
 
   return (
     <section className="rounded-lg border border-gray-200 bg-white p-4">
@@ -370,7 +381,7 @@ function ServiceSummaryCard({
           <div className="flex items-center gap-2">
             {isManaged ? <Sparkles size={16} className="text-blue-600" /> : <KeyRound size={16} className="text-gray-700" />}
             <h3 className="text-sm font-semibold text-gray-800">
-              {isManaged ? "PhotoCurate AI" : "自带 API Key"}
+              {isManaged ? "PhotoCurate AI" : t("scoring.byok")}
             </h3>
             <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
               isManaged && !canUseManagedAi
@@ -386,10 +397,10 @@ function ServiceSummaryCard({
             {isManaged
               ? billingStatus?.canUseManagedAi
                 ? managedAiRuntimeAvailable
-                  ? `托管 AI 当前可用，剩余额度 ${formatCredits(billingStatus.usage.remainingCredits)} 张。`
-                  : `订阅权益有效，剩余额度 ${formatCredits(billingStatus.usage.remainingCredits)} 张；托管评分执行服务仍需接入。`
-                : billingStatus?.message ?? "托管 AI 需要有效订阅。当前可切换到自带 API Key 继续生成评价。"
-              : `当前使用 ${providerLabel} / ${configuredModel} 生成评分和结构化点评。`}
+                  ? t("scoring.managedAvailableDescription", { credits: formatCredits(billingStatus.usage.remainingCredits) })
+                  : t("scoring.managedPendingDescription", { credits: formatCredits(billingStatus.usage.remainingCredits) })
+                : billingStatus?.message ?? t("scoring.managedNeedsSubscriptionDescription")
+              : t("scoring.byokDescription", { provider: providerLabel, model: configuredModel })}
           </p>
         </div>
         <button
@@ -397,7 +408,7 @@ function ServiceSummaryCard({
           onClick={onManage}
           className="shrink-0 rounded-md border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
         >
-          管理
+          {t("common.manage")}
         </button>
       </div>
     </section>

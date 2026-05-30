@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { useAppStore } from "@/stores/useAppStore";
 import { exportPhotos, pickDirectory } from "@/hooks/useInvoke";
+import { useI18n } from "@/lib/i18n";
 import { Download, Check, FolderOpen, AlertTriangle, FileImage, FolderTree, List, WandSparkles } from "lucide-react";
 import type { ExportResult } from "@/types";
 
 export default function ExportView() {
+  const { t } = useI18n();
   const photos = useAppStore((s) => s.photos);
   const setCurrentView = useAppStore((s) => s.setCurrentView);
   const [minScore, setMinScore] = useState(70);
@@ -35,7 +37,7 @@ export default function ExportView() {
       setLastResult(result);
     } catch (e) {
       console.error(e);
-      alert(`导出失败: ${e}`);
+      alert(t("export.failedAlert", { error: String(e) }));
     } finally {
       setIsExporting(false);
     }
@@ -48,7 +50,7 @@ export default function ExportView() {
     <div className="flex flex-col h-full p-6 overflow-auto">
       <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
         <Download size={20} />
-        精选导出
+        {t("export.title")}
       </h2>
 
       {needsAnalysis && (
@@ -56,9 +58,9 @@ export default function ExportView() {
           <div className="flex items-start gap-2">
             <WandSparkles size={16} className="mt-0.5 shrink-0 text-amber-700" />
             <div>
-              <p className="text-sm font-medium text-amber-900">先完成 AI 分析，才能按评分精选导出</p>
+              <p className="text-sm font-medium text-amber-900">{t("export.needsAnalysisTitle")}</p>
               <p className="mt-1 text-xs text-amber-700">
-                当前图库还没有已评分照片。分析完成后，这里会自动筛选高分作品。
+                {t("export.needsAnalysisDescription")}
               </p>
             </div>
           </div>
@@ -67,7 +69,7 @@ export default function ExportView() {
             onClick={() => setCurrentView("scoring")}
             className="shrink-0 rounded-md bg-amber-600 px-3 py-2 text-xs font-medium text-white hover:bg-amber-700"
           >
-            去作品分析
+            {t("export.goScoring")}
           </button>
         </div>
       )}
@@ -76,7 +78,7 @@ export default function ExportView() {
         {/* Score threshold */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            最低评分阈值: {minScore}
+            {t("export.minScore", { score: minScore })}
           </label>
           <input
             type="range"
@@ -98,7 +100,7 @@ export default function ExportView() {
 
         {/* Export mode */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">导出方式</label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">{t("export.mode")}</label>
           <div className="flex gap-3">
             <button
               onClick={() => setPreserveStructure(false)}
@@ -109,7 +111,7 @@ export default function ExportView() {
               }`}
             >
               <List size={16} />
-              扁平导出
+              {t("export.flat")}
             </button>
             <button
               onClick={() => setPreserveStructure(true)}
@@ -120,25 +122,25 @@ export default function ExportView() {
               }`}
             >
               <FolderTree size={16} />
-              保留原目录结构
+              {t("export.preserveStructure")}
             </button>
           </div>
           <p className="text-xs text-gray-400 mt-1.5">
             {preserveStructure
-              ? "按原始文件夹层级复制到目标目录"
-              : "所有照片直接复制到目标目录，重名自动加序号"}
+              ? t("export.preserveDescription")
+              : t("export.flatDescription")}
           </p>
         </div>
 
         {/* Destination */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">导出目标文件夹</label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">{t("export.destination")}</label>
           <div className="flex gap-2">
             <input
               type="text"
               readOnly
               value={destination}
-              placeholder="选择导出文件夹"
+              placeholder={t("export.destinationPlaceholder")}
               className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md bg-gray-50"
             />
             <button
@@ -146,7 +148,7 @@ export default function ExportView() {
               className="px-3 py-2 bg-gray-100 text-gray-700 text-sm rounded-md hover:bg-gray-200 flex items-center gap-1.5"
             >
               <FolderOpen size={14} />
-              选择
+              {t("export.choose")}
             </button>
           </div>
         </div>
@@ -155,7 +157,7 @@ export default function ExportView() {
         <div className="pt-2 border-t border-gray-100">
           <div className="flex items-center justify-between">
             <span className="text-sm text-gray-600">
-              将导出 <span className="font-semibold text-gray-800">{scoredPhotos.length}</span> 张照片
+              {t("export.count", { count: scoredPhotos.length })}
             </span>
             <button
               onClick={handleExport}
@@ -165,17 +167,17 @@ export default function ExportView() {
               {isExporting ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  导出中...
+                  {t("export.exporting")}
                 </>
               ) : allSuccess ? (
                 <>
                   <Check size={16} />
-                  导出完成
+                  {t("export.done")}
                 </>
               ) : (
                 <>
                   <Download size={16} />
-                  开始导出
+                  {t("export.start")}
                 </>
               )}
             </button>
@@ -200,14 +202,14 @@ export default function ExportView() {
             )}
             <span className={`font-medium ${hasFailures ? "text-amber-800" : "text-green-800"}`}>
               {hasFailures
-                ? `导出完成，${lastResult.exported_count} 张成功，${lastResult.failed_count} 张失败`
-                : `成功导出 ${lastResult.exported_count} 张照片`}
+                ? t("export.resultPartial", { success: lastResult.exported_count, failed: lastResult.failed_count })
+                : t("export.resultSuccess", { count: lastResult.exported_count })}
             </span>
           </div>
 
           {hasFailures && lastResult.failed_photos.length > 0 && (
             <div className="space-y-2">
-              <p className="text-xs text-amber-700 font-medium">失败详情：</p>
+              <p className="text-xs text-amber-700 font-medium">{t("export.failureDetails")}</p>
               <div className="max-h-48 overflow-auto rounded-md bg-white border border-amber-100">
                 {lastResult.failed_photos.map((f) => (
                   <div

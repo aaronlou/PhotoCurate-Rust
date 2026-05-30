@@ -1,5 +1,6 @@
 import { useAppStore } from "@/stores/useAppStore";
 import UpdateStatus from "@/components/UpdateStatus";
+import { useI18n, type LocalePreference, type TranslationKey } from "@/lib/i18n";
 import { NavItem } from "@/types";
 import {
   Images,
@@ -8,6 +9,7 @@ import {
   Download,
   BarChart3,
   Sparkles,
+  Languages,
 } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -16,16 +18,16 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-const workflowItems: { key: NavItem; label: string; icon: React.ReactNode }[] = [
-  { key: "library", label: "图库", icon: <Images size={18} /> },
-  { key: "insights", label: "洞察", icon: <BarChart3 size={18} /> },
-  { key: "search", label: "智能检索", icon: <Search size={18} /> },
-  { key: "export", label: "精选导出", icon: <Download size={18} /> },
+const workflowItems: { key: NavItem; labelKey: TranslationKey; icon: React.ReactNode }[] = [
+  { key: "library", labelKey: "nav.library", icon: <Images size={18} /> },
+  { key: "insights", labelKey: "nav.insights", icon: <BarChart3 size={18} /> },
+  { key: "search", labelKey: "nav.search", icon: <Search size={18} /> },
+  { key: "export", labelKey: "nav.export", icon: <Download size={18} /> },
 ];
 
-const automationItems: { key: NavItem; label: string; icon: React.ReactNode }[] = [
-  { key: "scoring", label: "作品分析", icon: <WandSparkles size={18} /> },
-  { key: "ai_service", label: "AI 服务", icon: <Sparkles size={18} /> },
+const automationItems: { key: NavItem; labelKey: TranslationKey; icon: React.ReactNode }[] = [
+  { key: "scoring", labelKey: "nav.scoring", icon: <WandSparkles size={18} /> },
+  { key: "ai_service", labelKey: "nav.aiService", icon: <Sparkles size={18} /> },
 ];
 
 const isAppStoreBuild = import.meta.env.VITE_APP_STORE === "true";
@@ -33,8 +35,9 @@ const isAppStoreBuild = import.meta.env.VITE_APP_STORE === "true";
 export default function Sidebar() {
   const currentView = useAppStore((s) => s.currentView);
   const setCurrentView = useAppStore((s) => s.setCurrentView);
+  const { t } = useI18n();
 
-  const renderItem = (item: { key: NavItem; label: string; icon: React.ReactNode }) => (
+  const renderItem = (item: { key: NavItem; labelKey: TranslationKey; icon: React.ReactNode }) => (
     <button
       key={item.key}
       onClick={() => setCurrentView(item.key)}
@@ -46,7 +49,7 @@ export default function Sidebar() {
       )}
     >
       {item.icon}
-      {item.label}
+      {t(item.labelKey)}
     </button>
   );
 
@@ -60,18 +63,42 @@ export default function Sidebar() {
       <nav className="flex-1 px-2">
         <div className="space-y-1">
           <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-            作品工作流
+            {t("nav.workflow")}
           </p>
           {workflowItems.map(renderItem)}
         </div>
         <div className="mt-5 space-y-1 border-t border-gray-200 pt-3">
           <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-            AI 自动化
+            {t("nav.automation")}
           </p>
           {automationItems.map(renderItem)}
         </div>
       </nav>
+      <LanguageSwitcher />
       {!isAppStoreBuild && <UpdateStatus />}
     </aside>
+  );
+}
+
+function LanguageSwitcher() {
+  const { t, localePreference, setLocalePreference } = useI18n();
+
+  return (
+    <div className="border-t border-gray-200 px-3 py-3">
+      <label className="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium text-gray-500">
+        <Languages size={13} />
+        {t("language.label")}
+      </label>
+      <select
+        value={localePreference}
+        onChange={(event) => setLocalePreference(event.target.value as LocalePreference)}
+        aria-label={t("language.label")}
+        className="h-8 w-full rounded-md border border-gray-200 bg-white px-2 text-[12px] font-medium text-gray-700 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+      >
+        <option value="auto">{t("language.auto")}</option>
+        <option value="zh-CN">{t("language.chinese")}</option>
+        <option value="en-US">{t("language.english")}</option>
+      </select>
+    </div>
   );
 }

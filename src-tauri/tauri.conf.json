@@ -4,7 +4,7 @@
   "version": "0.1.7",
   "identifier": "com.photocurate",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "bash scripts/vite-dev.sh",
     "beforeBuildCommand": "npm run build",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../dist"

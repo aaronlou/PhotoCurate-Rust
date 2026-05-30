@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useAppStore } from "@/stores/useAppStore";
 import { getLibraryInsights } from "@/hooks/useInvoke";
+import { useI18n } from "@/lib/i18n";
 import type { DimensionInsight, LibraryInsights, ScoreBucket, TextInsight } from "@/types";
 
 function formatScore(score: number | null | undefined) {
@@ -23,15 +24,16 @@ function formatPercent(value: number) {
   return `${Math.round(value * 100)}%`;
 }
 
-function formatLoadError(error: unknown) {
+function formatLoadError(error: unknown, tauriMissingMessage: string) {
   const message = typeof error === "string" ? error : String(error);
   if (message.includes("invoke")) {
-    return "当前浏览器预览缺少 Tauri 运行环境，请在桌面应用中查看洞察数据。";
+    return tauriMissingMessage;
   }
   return message;
 }
 
 export default function InsightsView() {
+  const { t } = useI18n();
   const setCurrentView = useAppStore((s) => s.setCurrentView);
   const [insights, setInsights] = useState<LibraryInsights | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -43,7 +45,7 @@ export default function InsightsView() {
     try {
       setInsights(await getLibraryInsights());
     } catch (e) {
-      setError(formatLoadError(e));
+      setError(formatLoadError(e, t("insights.tauriMissing")));
     } finally {
       setIsLoading(false);
     }
@@ -71,10 +73,10 @@ export default function InsightsView() {
           <div>
             <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-800">
               <BarChart3 size={20} className="text-blue-600" />
-              作品洞察
+              {t("insights.title")}
             </h2>
             <p className="mt-1 text-sm text-gray-500">
-              从评分、点评和维度表现中提炼你的作品模式
+              {t("insights.subtitle")}
             </p>
           </div>
           <button
@@ -83,7 +85,7 @@ export default function InsightsView() {
             className="flex items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
           >
             <RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
-            刷新
+            {t("insights.refresh")}
           </button>
         </div>
       </header>
@@ -98,18 +100,18 @@ export default function InsightsView() {
 
         {isLoading && !insights ? (
           <div className="rounded-lg border border-gray-200 bg-white p-6 text-sm text-gray-500">
-            正在生成洞察...
+            {t("insights.loading")}
           </div>
         ) : insights ? (
           <div className="space-y-5">
             <section className="grid grid-cols-4 gap-3">
-              <MetricCard label="已评价照片" value={`${insights.evaluated_photos}`} detail={`总计 ${insights.total_photos} 张`} />
-              <MetricCard label="平均分" value={formatScore(insights.average_score)} detail={`中位数 ${formatScore(insights.median_score)}`} />
-              <MetricCard label="高分比例" value={formatPercent(insights.high_score_rate)} detail={`${insights.high_score_count} 张 >= 80`} />
+              <MetricCard label={t("insights.evaluatedPhotos")} value={`${insights.evaluated_photos}`} detail={t("insights.totalPhotos", { count: insights.total_photos })} />
+              <MetricCard label={t("insights.averageScore")} value={formatScore(insights.average_score)} detail={t("insights.medianScore", { score: formatScore(insights.median_score) })} />
+              <MetricCard label={t("insights.highScoreRate")} value={formatPercent(insights.high_score_rate)} detail={t("insights.highScoreDetail", { count: insights.high_score_count })} />
               <MetricCard
-                label="旧评分待补全"
+                label={t("insights.scoreOnly")}
                 value={`${insights.score_only_photos}`}
-                detail="可在作品分析补生成评价"
+                detail={t("insights.scoreOnlyDetail")}
               />
             </section>
 
@@ -131,8 +133,8 @@ export default function InsightsView() {
                   <div className="rounded-lg border border-gray-200 bg-white p-5">
                     <div className="mb-4 flex items-center justify-between">
                       <div>
-                        <h3 className="text-sm font-semibold text-gray-800">评分分布</h3>
-                        <p className="mt-1 text-xs text-gray-400">观察作品库质量层级，而不是只看单张高分</p>
+                        <h3 className="text-sm font-semibold text-gray-800">{t("insights.scoreDistribution")}</h3>
+                        <p className="mt-1 text-xs text-gray-400">{t("insights.scoreDistributionSubtitle")}</p>
                       </div>
                       {insights.recent_trend && (
                         <div className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
@@ -148,7 +150,7 @@ export default function InsightsView() {
                   </div>
 
                   <div className="rounded-lg border border-gray-200 bg-white p-5">
-                    <h3 className="text-sm font-semibold text-gray-800">教练笔记</h3>
+                    <h3 className="text-sm font-semibold text-gray-800">{t("insights.coachNotes")}</h3>
                     <div className="mt-4 space-y-3">
                       {insights.coach_notes.map((note) => (
                         <div key={note} className="flex gap-2 rounded-md bg-gray-50 p-3 text-sm leading-6 text-gray-700">
@@ -163,29 +165,29 @@ export default function InsightsView() {
                 <section className="grid grid-cols-[0.9fr_1.1fr] gap-5">
                   <div className="rounded-lg border border-gray-200 bg-white p-5">
                     <div className="mb-4">
-                      <h3 className="text-sm font-semibold text-gray-800">维度表现</h3>
+                      <h3 className="text-sm font-semibold text-gray-800">{t("insights.dimensionPerformance")}</h3>
                       <p className="mt-1 text-xs text-gray-400">
-                        最强：{strongestDimension?.name ?? "—"}
+                        {t("insights.strongest", { name: strongestDimension?.name ?? "—" })}
                         <span className="mx-1 text-gray-300">/</span>
-                        待加强：{weakestDimension?.name ?? "—"}
+                        {t("insights.needsWork", { name: weakestDimension?.name ?? "—" })}
                       </p>
                     </div>
                     <DimensionBars dimensions={insights.dimension_averages} />
                   </div>
 
                   <div className="grid grid-cols-2 gap-5">
-                    <TextPanel title="稳定优势" icon={<CheckCircle2 size={16} />} items={insights.top_strengths} tone="green" />
-                    <TextPanel title="反复短板" icon={<Target size={16} />} items={insights.recurring_weaknesses} tone="amber" />
+                    <TextPanel title={t("insights.stableStrengths")} icon={<CheckCircle2 size={16} />} items={insights.top_strengths} tone="green" />
+                    <TextPanel title={t("insights.recurringWeaknesses")} icon={<Target size={16} />} items={insights.recurring_weaknesses} tone="amber" />
                   </div>
                 </section>
 
                 <section className="grid grid-cols-[0.9fr_1.1fr] gap-5">
-                  <TextPanel title="练习方向" icon={<Sparkles size={16} />} items={insights.suggested_practices} tone="blue" />
+                  <TextPanel title={t("insights.practiceDirections")} icon={<Sparkles size={16} />} items={insights.suggested_practices} tone="blue" />
                   <div className="rounded-lg border border-gray-200 bg-white p-5">
-                    <h3 className="text-sm font-semibold text-gray-800">代表高分作品</h3>
+                    <h3 className="text-sm font-semibold text-gray-800">{t("insights.topPhotos")}</h3>
                     <div className="mt-4 space-y-3">
                       {insights.top_photos.length === 0 ? (
-                        <p className="text-sm text-gray-400">还没有可展示的高分作品。</p>
+                        <p className="text-sm text-gray-400">{t("insights.noTopPhotos")}</p>
                       ) : (
                         insights.top_photos.map((photo) => (
                           <div key={photo.id} className="flex items-start justify-between gap-4 border-b border-gray-100 pb-3 last:border-0 last:pb-0">
@@ -205,7 +207,7 @@ export default function InsightsView() {
 
                 {insights.top_tags.length > 0 && (
                   <section className="rounded-lg border border-gray-200 bg-white p-5">
-                    <h3 className="text-sm font-semibold text-gray-800">常见标签</h3>
+                    <h3 className="text-sm font-semibold text-gray-800">{t("insights.commonTags")}</h3>
                     <div className="mt-4 flex flex-wrap gap-2">
                       {insights.top_tags.map((tag) => (
                         <span key={tag.label} className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">
@@ -235,12 +237,14 @@ function MetricCard({ label, value, detail }: { label: string; value: string; de
 }
 
 function EmptyState({ onStartAnalysis }: { onStartAnalysis: () => void }) {
+  const { t } = useI18n();
+
   return (
     <div className="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center">
       <Sparkles size={26} className="mx-auto text-blue-500" />
-      <h3 className="mt-3 text-sm font-semibold text-gray-800">还没有足够的评价数据</h3>
+      <h3 className="mt-3 text-sm font-semibold text-gray-800">{t("insights.emptyTitle")}</h3>
       <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-gray-500">
-        先为照片生成结构化评价，洞察页会开始汇总你的优势、短板、维度表现和练习方向。
+        {t("insights.emptyDescription")}
       </p>
       <button
         type="button"
@@ -248,7 +252,7 @@ function EmptyState({ onStartAnalysis }: { onStartAnalysis: () => void }) {
         className="mx-auto mt-4 flex items-center gap-1.5 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
       >
         <WandSparkles size={15} />
-        开始作品分析
+        {t("insights.startAnalysis")}
       </button>
     </div>
   );
@@ -263,15 +267,17 @@ function AnalysisPrompt({
   scoreOnlyCount: number;
   onStartAnalysis: () => void;
 }) {
+  const { t } = useI18n();
+
   return (
     <section className="flex items-center justify-between gap-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
       <div className="flex items-start gap-2">
         <WandSparkles size={16} className="mt-0.5 shrink-0 text-amber-700" />
         <div>
-          <p className="text-sm font-medium text-amber-900">补全分析后，洞察会更可靠</p>
+          <p className="text-sm font-medium text-amber-900">{t("insights.analysisPromptTitle")}</p>
           <p className="mt-1 text-xs text-amber-700">
-            {missingCount} 张照片缺少结构化评价
-            {scoreOnlyCount > 0 && `，其中 ${scoreOnlyCount} 张只有旧评分`}
+            {t("insights.analysisPromptMissing", { count: missingCount })}
+            {scoreOnlyCount > 0 && t("insights.analysisPromptScoreOnly", { count: scoreOnlyCount })}
           </p>
         </div>
       </div>
@@ -280,33 +286,34 @@ function AnalysisPrompt({
         onClick={onStartAnalysis}
         className="shrink-0 rounded-md bg-amber-600 px-3 py-2 text-xs font-medium text-white hover:bg-amber-700"
       >
-        去作品分析
+        {t("insights.goScoring")}
       </button>
     </section>
   );
 }
 
 function InsightReportPreview({ insights }: { insights: LibraryInsights }) {
+  const { t } = useI18n();
   const reportItems = [
     {
       icon: <Layers3 size={15} />,
-      label: "作品画像",
-      value: `${insights.top_tags.length} 个高频标签`,
-      detail: "汇总题材、风格和稳定表达方式",
+      label: t("insights.artworkProfile"),
+      value: t("insights.frequentTags", { count: insights.top_tags.length }),
+      detail: t("insights.artworkProfileDetail"),
     },
     {
       icon: <TrendingUp size={15} />,
-      label: "成长趋势",
+      label: t("insights.growthTrend"),
       value: insights.recent_trend
         ? `${insights.recent_trend.delta >= 0 ? "+" : ""}${insights.recent_trend.delta.toFixed(1)}`
-        : "待积累",
-      detail: "对比近期作品和早期作品的质量变化",
+        : t("insights.pending"),
+      detail: t("insights.growthTrendDetail"),
     },
     {
       icon: <ClipboardList size={15} />,
-      label: "练习计划",
-      value: `${insights.suggested_practices.length} 条方向`,
-      detail: "把反复短板转成下一阶段训练主题",
+      label: t("insights.practicePlan"),
+      value: t("insights.directionCount", { count: insights.suggested_practices.length }),
+      detail: t("insights.practicePlanDetail"),
     },
   ];
 
@@ -316,13 +323,13 @@ function InsightReportPreview({ insights }: { insights: LibraryInsights }) {
         <div className="max-w-2xl">
           <div className="flex items-center gap-2">
             <Sparkles size={16} className="text-blue-600" />
-            <h3 className="text-sm font-semibold text-gray-800">深度分析报告</h3>
+            <h3 className="text-sm font-semibold text-gray-800">{t("insights.deepReport")}</h3>
             <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700">
               PhotoCurate AI
             </span>
           </div>
           <p className="mt-2 text-sm leading-6 text-gray-500">
-            当评分和点评持续积累后，PhotoCurate 可以把单张评价升级为作品库级别的分析：你擅长拍什么、哪些问题反复出现，以及下一阶段应该如何练习。
+            {t("insights.deepReportDescription")}
           </p>
         </div>
         <button
@@ -330,7 +337,7 @@ function InsightReportPreview({ insights }: { insights: LibraryInsights }) {
           disabled
           className="shrink-0 rounded-md bg-gray-200 px-3 py-2 text-xs font-medium text-gray-500"
         >
-          即将开放
+          {t("insights.comingSoon")}
         </button>
       </div>
       <div className="mt-4 grid grid-cols-3 gap-3">
@@ -371,8 +378,10 @@ function ScoreDistribution({ buckets }: { buckets: ScoreBucket[] }) {
 }
 
 function DimensionBars({ dimensions }: { dimensions: DimensionInsight[] }) {
+  const { t } = useI18n();
+
   if (dimensions.length === 0) {
-    return <p className="text-sm text-gray-400">评价里还没有维度评分。</p>;
+    return <p className="text-sm text-gray-400">{t("insights.noDimensionScores")}</p>;
   }
 
   return (
@@ -406,6 +415,7 @@ function TextPanel({
   items: TextInsight[];
   tone: "green" | "amber" | "blue";
 }) {
+  const { t } = useI18n();
   const toneClass = {
     green: "bg-green-50 text-green-700",
     amber: "bg-amber-50 text-amber-700",
@@ -420,7 +430,7 @@ function TextPanel({
       </h3>
       <div className="mt-4 space-y-2">
         {items.length === 0 ? (
-          <p className="text-sm text-gray-400">暂时没有可聚合的信息。</p>
+          <p className="text-sm text-gray-400">{t("insights.noAggregatedInfo")}</p>
         ) : (
           items.map((item) => (
             <div key={item.label} className="flex items-center justify-between gap-3 rounded-md bg-gray-50 px-3 py-2">

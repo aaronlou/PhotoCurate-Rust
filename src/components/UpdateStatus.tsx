@@ -5,32 +5,19 @@ import {
   getAppVersion,
   installAppUpdate,
 } from "@/hooks/useInvoke";
+import { useI18n } from "@/lib/i18n";
 import type { AppUpdateInfo } from "@/types";
 
 type UpdateState = "idle" | "checking" | "ready" | "downloading" | "restarting" | "current" | "error";
 
-function formatDate(value: string | null) {
-  if (!value) {
-    return null;
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
-  return date.toLocaleDateString("zh-CN", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
 export default function UpdateStatus() {
+  const { t, formatDate } = useI18n();
   const [state, setState] = useState<UpdateState>("checking");
   const [version, setVersion] = useState<string>("--");
   const [update, setUpdate] = useState<AppUpdateInfo | null>(null);
   const [downloadedBytes, setDownloadedBytes] = useState(0);
   const [totalBytes, setTotalBytes] = useState<number | null>(null);
-  const [message, setMessage] = useState<string>("正在检查...");
+  const [message, setMessage] = useState<string>(() => t("update.checking"));
 
   useEffect(() => {
     getAppVersion().then(setVersion).catch(() => setVersion("--"));
@@ -47,10 +34,24 @@ export default function UpdateStatus() {
     };
   }, []);
 
+  useEffect(() => {
+    if (state === "checking") {
+      setMessage(t("update.checking"));
+    } else if (state === "ready" && update) {
+      setMessage(t("update.ready", { version: update.version }));
+    } else if (state === "current") {
+      setMessage(t("update.current"));
+    } else if (state === "downloading") {
+      setMessage(t("update.downloading"));
+    } else if (state === "restarting") {
+      setMessage(t("update.restarting"));
+    }
+  }, [state, t, update]);
+
   async function handleCheck(options?: { quiet?: boolean; cancelled?: () => boolean }) {
     if (!options?.quiet) {
       setState("checking");
-      setMessage("正在检查...");
+      setMessage(t("update.checking"));
     }
     try {
       const nextUpdate = await checkForAppUpdate();
@@ -60,15 +61,15 @@ export default function UpdateStatus() {
       if (nextUpdate) {
         setUpdate(nextUpdate);
         setState("ready");
-        setMessage(`新版本 ${nextUpdate.version}`);
+        setMessage(t("update.ready", { version: nextUpdate.version }));
       } else {
         setUpdate(null);
         setState("current");
-        setMessage("已是最新版本");
+        setMessage(t("update.current"));
       }
     } catch (error) {
       setState("error");
-      setMessage(typeof error === "string" ? error : "检查失败，请稍后重试");
+      setMessage(typeof error === "string" ? error : t("update.checkFailed"));
     }
   }
 
@@ -76,7 +77,7 @@ export default function UpdateStatus() {
     setState("downloading");
     setDownloadedBytes(0);
     setTotalBytes(null);
-    setMessage("正在下载更新...");
+    setMessage(t("update.downloading"));
 
     try {
       await installAppUpdate((event) => {
@@ -86,12 +87,12 @@ export default function UpdateStatus() {
           setDownloadedBytes((current) => current + event.data.chunkLength);
         } else if (event.event === "Finished") {
           setState("restarting");
-          setMessage("安装完成，正在重启...");
+          setMessage(t("update.restarting"));
         }
       });
     } catch (error) {
       setState("error");
-      setMessage(typeof error === "string" ? error : "更新失败，请重新尝试");
+      setMessage(typeof error === "string" ? error : t("update.failed"));
     }
   }
 
@@ -102,7 +103,7 @@ export default function UpdateStatus() {
   return (
     <div className="border-t border-gray-200 px-3 py-3">
       <div className="mb-2 flex items-center justify-between text-[11px] text-gray-500">
-        <span>当前版本</span>
+        <span>{t("update.currentVersion")}</span>
         <span className="font-medium text-gray-700">v{version}</span>
       </div>
 
@@ -114,7 +115,7 @@ export default function UpdateStatus() {
             className="flex h-9 w-full items-center justify-center gap-1.5 rounded-full bg-blue-500 px-4 text-[13px] font-semibold text-white shadow-sm transition hover:bg-blue-600"
           >
             <RotateCw size={14} />
-            更新
+            {t("update.action")}
           </button>
           <div className="rounded-md bg-blue-50 px-2.5 py-2 text-[11px] leading-4 text-blue-700">
             <p className="font-semibold">{message}</p>
@@ -150,7 +151,7 @@ export default function UpdateStatus() {
             />
           </div>
           <p className="mt-1 text-[11px] text-gray-500">
-            {totalBytes ? `${progress}%` : "正在连接下载源..."}
+            {totalBytes ? `${progress}%` : t("update.connecting")}
           </p>
         </div>
       )}

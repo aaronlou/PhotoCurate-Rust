@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "@/stores/useAppStore";
+import { useI18n } from "@/lib/i18n";
 import {
   buildSearchIndex,
   cancelSearchIndexing,
@@ -59,6 +60,7 @@ type FolderIndexSummary = {
 };
 
 export default function SearchView() {
+  const { t } = useI18n();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -134,7 +136,7 @@ export default function SearchView() {
       return true;
     }
     setSearchError(null);
-    setSearchNotice("需要读取已保存的 Gemini API Key。请先勾选页面上的说明，确认后再继续。");
+    setSearchNotice(t("search.savedKeyConsentRequired"));
     return false;
   };
 
@@ -148,7 +150,7 @@ export default function SearchView() {
     if (!query.trim()) return;
     if (indexedCount === 0) {
       setSearchError(null);
-      setSearchNotice("请先为需要检索的文件夹生成本地索引，再开始自然语言检索。");
+      setSearchNotice(t("search.buildIndexFirst"));
       return;
     }
     if (!requireSavedKeyConsent()) return;
@@ -162,7 +164,7 @@ export default function SearchView() {
       await refreshIndexState();
     } catch (e: any) {
       console.error(e);
-      setSearchError(typeof e === "string" ? e : e?.message || "搜索失败，请检查 API Key 或网络连接");
+      setSearchError(typeof e === "string" ? e : e?.message || t("search.failed"));
     } finally {
       setIsSearching(false);
     }
@@ -180,13 +182,17 @@ export default function SearchView() {
       const count = await buildSearchIndex(summary.pendingPhotoIds, needsSavedGeminiKey);
       await refreshIndexState();
       if (cancelRequestedRef.current) {
-        setSearchNotice(`已中止“${directoryName(summary.directory.path)}”的索引任务，已保留完成的 ${count} 张本地索引。`);
+        setSearchNotice(
+          t("search.folderIndexCancelled", { name: directoryName(summary.directory.path), count })
+        );
       } else {
-        setSearchNotice(`已为“${directoryName(summary.directory.path)}”生成 ${count} 张照片的本地索引。`);
+        setSearchNotice(
+          t("search.folderIndexComplete", { name: directoryName(summary.directory.path), count })
+        );
       }
     } catch (e: any) {
       console.error(e);
-      setSearchError(typeof e === "string" ? e : e?.message || "生成索引失败");
+      setSearchError(typeof e === "string" ? e : e?.message || t("search.indexFailed"));
     } finally {
       cancelRequestedRef.current = false;
       setActiveIndexDirectoryId(null);
@@ -196,12 +202,12 @@ export default function SearchView() {
   const handleCancelIndexing = async () => {
     cancelRequestedRef.current = true;
     await cancelSearchIndexing();
-    setSearchNotice("已请求中止索引任务，当前照片处理完成后会停止。");
+    setSearchNotice(t("search.cancelIndexNotice"));
   };
 
   const handleRebuildAll = async () => {
     if (!requireSavedKeyConsent()) return;
-    if (!window.confirm("确定要重建全部文件夹索引吗？这会重新生成所有搜索向量，可能需要一些时间。")) {
+    if (!window.confirm(t("search.rebuildConfirm"))) {
       return;
     }
 
@@ -214,13 +220,13 @@ export default function SearchView() {
       const count = await rebuildAllIndex(needsSavedGeminiKey);
       await refreshIndexState();
       if (cancelRequestedRef.current) {
-        setSearchNotice("已中止全部索引重建，原有索引保持不变。");
+        setSearchNotice(t("search.rebuildCancelled"));
       } else {
-        setSearchNotice(`索引重建完成，成功索引 ${count} 张照片。`);
+        setSearchNotice(t("search.rebuildComplete", { count }));
       }
     } catch (e: any) {
       console.error(e);
-      setSearchError(typeof e === "string" ? e : e?.message || "重建索引失败");
+      setSearchError(typeof e === "string" ? e : e?.message || t("search.rebuildFailed"));
     } finally {
       cancelRequestedRef.current = false;
       setIsRebuilding(false);
@@ -283,22 +289,22 @@ export default function SearchView() {
     );
   };
 
-  const noResultsReason = indexedCount === 0 ? "暂无已索引照片，无法搜索" : "未找到匹配结果，尝试换用其他关键词";
+  const noResultsReason = indexedCount === 0 ? t("search.noIndexedPhotos") : t("search.noResults");
 
   return (
     <div className="flex h-full flex-col">
       <div className="px-6 pb-2 pt-5">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="mb-1 text-lg font-semibold text-gray-800">智能检索</h2>
+            <h2 className="mb-1 text-lg font-semibold text-gray-800">{t("search.title")}</h2>
             <p className="text-xs text-gray-400">
-              用自然语言描述画面，快速找到相关照片
+              {t("search.subtitle")}
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2 rounded-full bg-gray-50 px-2.5 py-1 text-[11px] text-gray-500">
             <Database size={12} />
-            <span>{indexedCount} / {totalPhotos} 已索引</span>
-            {pendingIndexCount > 0 && <span className="text-amber-600">{pendingIndexCount} 待处理</span>}
+            <span>{t("search.indexedSummary", { indexed: indexedCount, total: totalPhotos })}</span>
+            {pendingIndexCount > 0 && <span className="text-amber-600">{t("search.pendingCount", { count: pendingIndexCount })}</span>}
           </div>
         </div>
       </div>
@@ -312,7 +318,7 @@ export default function SearchView() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-              placeholder="例如：夕阳下的海边、猫在沙发上、红色跑车..."
+              placeholder={t("search.placeholder")}
               className="w-full rounded-md border border-gray-300 py-2.5 pl-9 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -324,12 +330,12 @@ export default function SearchView() {
             {isSearching ? (
               <>
                 <span className="h-3.5 w-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                搜索中...
+                {t("search.searching")}
               </>
             ) : (
               <>
                 <Search size={14} />
-                搜索
+                {t("search.action")}
               </>
             )}
           </button>
@@ -344,13 +350,13 @@ export default function SearchView() {
         >
           <div className="flex min-w-0 items-center gap-2">
             <FolderOpen size={14} className="shrink-0 text-gray-500" />
-            <span className="shrink-0 text-xs font-medium text-gray-700">本地索引</span>
+            <span className="shrink-0 text-xs font-medium text-gray-700">{t("search.localIndex")}</span>
             <div className="h-1.5 w-24 overflow-hidden rounded-full bg-gray-100">
               <div className="h-full rounded-full bg-blue-500" style={{ width: `${indexPercent}%` }} />
             </div>
             <span className="truncate text-[11px] text-gray-400">
-              {indexedCount} / {totalPhotos} 张
-              {pendingFolderCount > 0 ? `，${pendingFolderCount} 个文件夹待处理` : "，可检索"}
+              {t("search.indexedSummary", { indexed: indexedCount, total: totalPhotos })}
+              {pendingFolderCount > 0 ? t("search.folderPending", { count: pendingFolderCount }) : t("search.searchable")}
             </span>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -360,7 +366,7 @@ export default function SearchView() {
               </span>
             )}
             {forceIndexPanelOpen && (
-              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">需要索引</span>
+              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">{t("search.needsIndex")}</span>
             )}
             {indexPanelOpen ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
           </div>
@@ -382,7 +388,7 @@ export default function SearchView() {
             <div className="mb-3 flex items-start gap-2 rounded-md bg-blue-50 px-2.5 py-2 text-xs text-blue-700">
               <Database size={14} className="mt-0.5 shrink-0 text-blue-600" />
               <p className="leading-5">
-                自然语言检索需要先生成本地搜索向量。索引保存在本机数据库中，你可以按文件夹决定是否处理。
+                {t("search.indexHelp")}
               </p>
               {isIndexing && (
                 <button
@@ -391,7 +397,7 @@ export default function SearchView() {
                   className="ml-auto flex shrink-0 items-center gap-1 rounded-md border border-blue-200 bg-white px-2 py-1 text-[11px] font-medium text-blue-700 hover:bg-blue-50"
                 >
                   <Square size={11} />
-                  中止
+                  {t("search.stop")}
                 </button>
               )}
             </div>
@@ -405,14 +411,14 @@ export default function SearchView() {
                   className="mt-0.5"
                 />
                 <span>
-                  未加载本地 Chinese-CLIP 模型时，会从 macOS 钥匙串读取已保存的 Gemini API Key，只用于生成搜索向量。
+                  {t("search.savedGeminiKeyRead")}
                 </span>
               </label>
             )}
 
             <div className="space-y-1.5">
               {folderSummaries.length === 0 ? (
-                <div className="rounded-md bg-gray-50 px-2.5 py-2 text-xs text-gray-400">先在图库页面添加照片文件夹</div>
+                <div className="rounded-md bg-gray-50 px-2.5 py-2 text-xs text-gray-400">{t("search.addFoldersFirst")}</div>
               ) : (
                 folderSummaries.map((summary) => {
                   const isActive = activeIndexDirectoryId === summary.directory.id || activeIndexDirectoryId === "all";
@@ -449,14 +455,14 @@ export default function SearchView() {
                         {isActive ? (
                           <>
                             <span className="h-3 w-3 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-                            生成中
+                            {t("search.generating")}
                           </>
                         ) : summary.pending === 0 ? (
-                          "已完成"
+                          t("search.completed")
                         ) : (
                           <>
                             <WandSparkles size={13} />
-                            开始
+                            {t("search.start")}
                           </>
                         )}
                       </button>
@@ -472,7 +478,7 @@ export default function SearchView() {
                 className="flex items-center gap-1 text-[11px] text-gray-400 transition-colors hover:text-gray-600"
               >
                 <Wrench size={11} />
-                诊断信息
+                {t("search.diagnostics")}
                 {showDiagnostics ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
               </button>
               {indexedCount > 0 && (
@@ -482,24 +488,24 @@ export default function SearchView() {
                   disabled={isIndexing || isRebuilding}
                   className="rounded-md px-2 py-1 text-[11px] font-medium text-amber-600 hover:bg-amber-50 disabled:opacity-50"
                 >
-                  {isRebuilding ? "重建中..." : "重建全部"}
+                  {isRebuilding ? t("search.rebuilding") : t("search.rebuildAll")}
                 </button>
               )}
             </div>
 
             {showDiagnostics && (
               <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 rounded-md border border-gray-200 bg-gray-50 p-2.5 font-mono text-[11px] text-gray-500">
-                <span>数据库已索引:</span>
+                <span>{t("search.databaseIndexed")}</span>
                 <span>{indexedCount} / {totalPhotos}</span>
-                <span>内存索引条目:</span>
+                <span>{t("search.memoryEntries")}</span>
                 <span>{indexStats?.count ?? "--"}</span>
-                <span>向量维度:</span>
+                <span>{t("search.vectorDimension")}</span>
                 <span>{indexStats?.dimension ?? "--"}</span>
-                <span>等待索引:</span>
+                <span>{t("search.pendingIndex")}</span>
                 <span>{unindexedPhotos.length}</span>
                 {indexStats && indexStats.count > 0 && indexStats.dimension && indexStats.count !== indexedCount && (
                   <div className="col-span-2 border-t border-gray-200 pt-1 text-amber-600">
-                    内存索引与数据库不一致，建议重建索引
+                    {t("search.indexMismatch")}
                   </div>
                 )}
               </div>
@@ -509,11 +515,11 @@ export default function SearchView() {
       </section>
 
       {searchError && (
-        <NoticeBanner tone="red" title="搜索失败" message={searchError} onClose={() => setSearchError(null)} />
+        <NoticeBanner tone="red" title={t("search.failureTitle")} message={searchError} onClose={() => setSearchError(null)} />
       )}
 
       {searchNotice && (
-        <NoticeBanner tone="amber" title="提示" message={searchNotice} onClose={() => setSearchNotice(null)} />
+        <NoticeBanner tone="amber" title={t("search.noticeTitle")} message={searchNotice} onClose={() => setSearchNotice(null)} />
       )}
 
       <div className="flex-1 overflow-auto px-6 pb-6 scrollbar-thin">
@@ -523,7 +529,7 @@ export default function SearchView() {
             <p className="text-sm text-gray-500">{noResultsReason}</p>
             {indexStats && indexStats.count > 0 && indexStats.dimension && (
               <p className="mt-2 text-xs text-gray-400">
-                当前索引维度: {indexStats.dimension}，查询向量将与此匹配
+                {t("search.currentDimension", { dimension: indexStats.dimension })}
               </p>
             )}
           </div>
@@ -533,10 +539,10 @@ export default function SearchView() {
           <div className="flex h-64 flex-col items-center justify-center text-gray-400">
             <Search size={40} strokeWidth={1.2} className="mb-3 text-gray-300" />
             <p className="text-sm text-gray-500">
-              {indexedCount === 0 ? "选择文件夹并生成索引后即可开始检索" : "输入描述开始检索"}
+              {indexedCount === 0 ? t("search.readyAfterIndex") : t("search.inputToSearch")}
             </p>
             {totalPhotos === 0 && (
-              <p className="mt-2 text-xs text-gray-400">先在图库页面添加照片文件夹</p>
+              <p className="mt-2 text-xs text-gray-400">{t("search.addFoldersFirst")}</p>
             )}
           </div>
         )}
@@ -547,8 +553,8 @@ export default function SearchView() {
               <section>
                 <div className="mb-3 flex items-center gap-2">
                   <Sparkles size={14} className="text-emerald-500" />
-                  <h3 className="text-sm font-semibold text-gray-800">最相关</h3>
-                  <span className="text-[11px] text-gray-400">{highRelevance.length} 张</span>
+                  <h3 className="text-sm font-semibold text-gray-800">{t("search.mostRelevant")}</h3>
+                  <span className="text-[11px] text-gray-400">{t("search.photoCount", { count: highRelevance.length })}</span>
                 </div>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
                   {highRelevance.map((r) => (
@@ -562,8 +568,8 @@ export default function SearchView() {
               <section>
                 <div className="mb-3 flex items-center gap-2">
                   <FolderOpen size={14} className="text-gray-400" />
-                  <h3 className="text-sm font-medium text-gray-600">更多参考</h3>
-                  <span className="text-[11px] text-gray-400">{moreReference.length} 张</span>
+                  <h3 className="text-sm font-medium text-gray-600">{t("search.moreReference")}</h3>
+                  <span className="text-[11px] text-gray-400">{t("search.photoCount", { count: moreReference.length })}</span>
                 </div>
                 <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
                   {moreReference.map((r) => (
@@ -590,6 +596,7 @@ function NoticeBanner({
   message: string;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const toneClass =
     tone === "red"
       ? "border-red-200 bg-red-50 text-red-600"
@@ -604,7 +611,7 @@ function NoticeBanner({
         <p className="mt-0.5 text-xs">{message}</p>
       </div>
       <button type="button" onClick={onClose} className="text-xs hover:opacity-80">
-        关闭
+        {t("common.close")}
       </button>
     </div>
   );

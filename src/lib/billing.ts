@@ -1,4 +1,5 @@
 import type { BillingInterval, BillingPlanId, BillingStatus, SubscriptionStatus } from "@/types";
+import type { TranslationKey } from "@/lib/i18n";
 
 export interface BillingPlan {
   id: BillingPlanId;
@@ -92,4 +93,15 @@ export function usagePercent(status: BillingStatus | null) {
     return 0;
   }
   return Math.min(100, Math.round((status.usage.usedCredits / status.usage.includedCredits) * 100));
+}
+
+export function billingStatusTranslationKey(status: SubscriptionStatus): TranslationKey {
+  return `billing.status.${status}` as TranslationKey;
+}
+
+export function billingProviderTranslationKey(status: BillingStatus | null): TranslationKey | null {
+  if (!status) return "billing.provider.checking";
+  if (status.provider === "manual") return "billing.provider.manual";
+  if (status.provider === "none") return "billing.provider.unconfigured";
+  return null;
 }

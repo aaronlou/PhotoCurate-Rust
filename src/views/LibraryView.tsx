@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAppStore } from "@/stores/useAppStore";
 import { pickDirectory } from "@/hooks/useInvoke";
+import { useI18n } from "@/lib/i18n";
 import {
   AlertCircle,
   FolderPlus,
@@ -54,6 +55,7 @@ function setStoredPanelState(key: string, value: boolean) {
 }
 
 export default function LibraryView() {
+  const { t } = useI18n();
   const photos = useAppStore((s) => s.photos);
   const directories = useAppStore((s) => s.directories);
   const selectedPhoto = useAppStore((s) => s.selectedPhoto);
@@ -84,7 +86,7 @@ export default function LibraryView() {
       setErrorMsg(
         typeof error === "string"
           ? error
-          : error?.message || "加载图库失败，请稍后重试"
+          : error?.message || t("library.loadFailed")
       );
     });
   }, [loadLibrary]);
@@ -135,7 +137,7 @@ export default function LibraryView() {
       }
     } catch (e: any) {
       console.error("Add directory failed:", e);
-      setErrorMsg(typeof e === "string" ? e : e?.message || "添加文件夹失败，请检查控制台日志");
+      setErrorMsg(typeof e === "string" ? e : e?.message || t("library.addFolderFailed"));
     } finally {
       setIsAdding(false);
     }
@@ -151,7 +153,7 @@ export default function LibraryView() {
   const handleRemoveDirectory = async (event: React.MouseEvent, directory: Directory) => {
     event.stopPropagation();
     const confirmed = window.confirm(
-      `从图库移出“${directoryName(directory.path)}”？\n不会删除磁盘上的照片。`
+      t("library.removeFolderConfirm", { name: directoryName(directory.path) })
     );
     if (!confirmed) {
       return;
@@ -169,7 +171,7 @@ export default function LibraryView() {
       }
     } catch (e: any) {
       console.error("Remove directory failed:", e);
-      setErrorMsg(typeof e === "string" ? e : e?.message || "移出文件夹失败，请检查控制台日志");
+      setErrorMsg(typeof e === "string" ? e : e?.message || t("library.removeFolderFailed"));
     } finally {
       setRemovingDirectoryId(null);
     }
@@ -186,27 +188,27 @@ export default function LibraryView() {
 
   const sortLabel =
     photoSortOrder === "score_desc"
-      ? "评分从高到低"
+      ? t("library.sort.scoreDesc")
       : photoSortOrder === "score_asc"
-      ? "评分从低到高"
-      : "按时间排序";
+      ? t("library.sort.scoreAsc")
+      : t("library.sort.dateDesc");
   const missingEvaluationCount = visiblePhotos.filter((p) => !p.latest_evaluation).length;
   const evaluatedCount = visiblePhotos.filter((p) => p.latest_evaluation).length;
-  const selectedScopeLabel = selectedDirectory ? directoryName(selectedDirectory.path) : "全部照片";
+  const selectedScopeLabel = selectedDirectory ? directoryName(selectedDirectory.path) : t("library.allPhotos");
 
   if (directories.length === 0 && photos.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-gray-500">
         <ImageIcon size={48} strokeWidth={1.2} className="mb-4 text-gray-300" />
-        <h2 className="text-base font-medium text-gray-700 mb-1">暂无照片</h2>
-        <p className="text-sm text-gray-400 mb-5">添加包含照片的文件夹，开始整理、分析和筛选作品</p>
+        <h2 className="text-base font-medium text-gray-700 mb-1">{t("library.emptyTitle")}</h2>
+        <p className="text-sm text-gray-400 mb-5">{t("library.emptyDescription")}</p>
         <button
           onClick={handleAddDirectory}
           disabled={isAdding}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 disabled:opacity-50"
         >
           <FolderPlus size={16} />
-          {isAdding ? "添加中..." : "添加文件夹"}
+          {isAdding ? t("library.adding") : t("library.addFolder")}
         </button>
         {errorMsg && (
           <p className="mt-3 text-xs text-red-500 max-w-xs text-center">{errorMsg}</p>
@@ -223,15 +225,15 @@ export default function LibraryView() {
           <button
             type="button"
             onClick={() => setIsFolderPanelOpen((value) => !value)}
-            title={isFolderPanelOpen ? "折叠源文件夹" : "展开源文件夹"}
-            aria-label={isFolderPanelOpen ? "折叠源文件夹" : "展开源文件夹"}
+            title={isFolderPanelOpen ? t("library.collapseFolders") : t("library.expandFolders")}
+            aria-label={isFolderPanelOpen ? t("library.collapseFolders") : t("library.expandFolders")}
             className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-800"
           >
             {isFolderPanelOpen ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}
           </button>
           <span className="text-[11px] font-medium text-gray-600">{selectedScopeLabel}</span>
           <span className="text-[11px] text-gray-400">
-            {visiblePhotos.length} 张照片 / {directories.length} 个文件夹
+            {t("library.folderSummary", { photos: visiblePhotos.length, folders: directories.length })}
           </span>
           {missingEvaluationCount > 0 && (
             <button
@@ -240,7 +242,7 @@ export default function LibraryView() {
               className="flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700 hover:bg-amber-100"
             >
               <WandSparkles size={12} />
-              {missingEvaluationCount} 张待分析
+              {t("library.pendingAnalysis", { count: missingEvaluationCount })}
             </button>
           )}
           {missingEvaluationCount === 0 && evaluatedCount > 0 && (
@@ -250,7 +252,7 @@ export default function LibraryView() {
               className="flex items-center gap-1.5 rounded-full bg-green-50 px-2.5 py-1 text-[11px] font-medium text-green-700 hover:bg-green-100"
             >
               <Sparkles size={12} />
-              查看洞察
+              {t("library.viewInsights")}
             </button>
           )}
         </div>
@@ -261,17 +263,17 @@ export default function LibraryView() {
             disabled={!selectedPhoto}
             title={
               !selectedPhoto
-                ? "选择照片后查看分析"
+                ? t("library.selectPhotoForAnalysis")
                 : isEvaluationPanelOpen
-                ? "折叠分析面板"
-                : "展开分析面板"
+                ? t("library.collapseAnalysis")
+                : t("library.expandAnalysis")
             }
             aria-label={
               !selectedPhoto
-                ? "选择照片后查看分析"
+                ? t("library.selectPhotoForAnalysis")
                 : isEvaluationPanelOpen
-                ? "折叠分析面板"
-                : "展开分析面板"
+                ? t("library.collapseAnalysis")
+                : t("library.expandAnalysis")
             }
             className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-35"
           >
@@ -304,7 +306,7 @@ export default function LibraryView() {
                     )}
                   >
                     <CalendarDays size={13} />
-                    按时间排序
+                    {t("library.sort.dateDesc")}
                   </button>
                   <button
                     onClick={() => handleSortChange("score_desc")}
@@ -314,7 +316,7 @@ export default function LibraryView() {
                     )}
                   >
                     <ArrowDownAZ size={13} />
-                    评分从高到低
+                    {t("library.sort.scoreDesc")}
                   </button>
                   <button
                     onClick={() => handleSortChange("score_asc")}
@@ -324,7 +326,7 @@ export default function LibraryView() {
                     )}
                   >
                     <ArrowUpAZ size={13} />
-                    评分从低到高
+                    {t("library.sort.scoreAsc")}
                   </button>
                 </div>
               </>
@@ -356,7 +358,7 @@ export default function LibraryView() {
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md disabled:opacity-50"
           >
             <FolderPlus size={14} />
-            添加文件夹
+            {t("library.addFolder")}
           </button>
         </div>
       </div>
@@ -368,15 +370,15 @@ export default function LibraryView() {
             <div className="mb-3 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
                 <Folders size={16} />
-                源文件夹
+                {t("library.sourceFolders")}
               </div>
               <div className="flex items-center gap-1">
                 <button
                   type="button"
                   onClick={handleAddDirectory}
                   disabled={isAdding}
-                  title="添加文件夹"
-                  aria-label="添加文件夹"
+                  title={t("library.addFolder")}
+                  aria-label={t("library.addFolder")}
                   className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-800 disabled:opacity-50"
                 >
                   <FolderPlus size={15} />
@@ -384,8 +386,8 @@ export default function LibraryView() {
                 <button
                   type="button"
                   onClick={() => setIsFolderPanelOpen(false)}
-                  title="折叠源文件夹"
-                  aria-label="折叠源文件夹"
+                  title={t("library.collapseFolders")}
+                  aria-label={t("library.collapseFolders")}
                   className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-800"
                 >
                   <PanelLeftClose size={15} />
@@ -405,7 +407,7 @@ export default function LibraryView() {
                 )}
               >
                 <Folders size={15} />
-                <span className="min-w-0 flex-1 truncate">全部照片</span>
+                <span className="min-w-0 flex-1 truncate">{t("library.allPhotos")}</span>
                 <span className="shrink-0 text-[11px] text-gray-400">{photos.length}</span>
               </button>
 
@@ -437,8 +439,8 @@ export default function LibraryView() {
                     </button>
                     <button
                       type="button"
-                      title="移出文件夹"
-                      aria-label="移出文件夹"
+                      title={t("library.removeFolder")}
+                      aria-label={t("library.removeFolder")}
                       onClick={(event) => handleRemoveDirectory(event, directory)}
                       disabled={removingDirectoryId === directory.id}
                       className={cn(
@@ -465,8 +467,8 @@ export default function LibraryView() {
             <button
               type="button"
               onClick={() => setIsFolderPanelOpen(true)}
-              title="展开源文件夹"
-              aria-label="展开源文件夹"
+              title={t("library.expandFolders")}
+              aria-label={t("library.expandFolders")}
               className="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-white hover:text-blue-600 hover:shadow-sm"
             >
               <PanelLeftOpen size={16} />
@@ -474,8 +476,8 @@ export default function LibraryView() {
             <button
               type="button"
               onClick={() => setIsFolderPanelOpen(true)}
-              title={`${directories.length} 个文件夹`}
-              aria-label="展开源文件夹"
+              title={t("library.folderCount", { count: directories.length })}
+              aria-label={t("library.expandFolders")}
               className="mt-2 flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-white hover:text-blue-600 hover:shadow-sm"
             >
               <Folders size={16} />
@@ -487,9 +489,9 @@ export default function LibraryView() {
           {visiblePhotos.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center text-gray-500">
               <ImageIcon size={40} strokeWidth={1.2} className="mb-3 text-gray-300" />
-              <h2 className="mb-1 text-sm font-medium text-gray-700">暂无照片</h2>
+              <h2 className="mb-1 text-sm font-medium text-gray-700">{t("library.emptyTitle")}</h2>
               <p className="text-xs text-gray-400">
-                {selectedDirectory ? "这个文件夹里还没有可识别的照片" : "已添加文件夹，但还没有可识别的照片"}
+                {selectedDirectory ? t("library.folderNoPhotos") : t("library.libraryNoPhotos")}
               </p>
             </div>
           ) : viewMode === "grid" ? (
@@ -581,8 +583,8 @@ export default function LibraryView() {
             <button
               type="button"
               onClick={() => setIsEvaluationPanelOpen(true)}
-              title="展开分析面板"
-              aria-label="展开分析面板"
+              title={t("library.expandAnalysis")}
+              aria-label={t("library.expandAnalysis")}
               className="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-white hover:text-blue-600 hover:shadow-sm"
             >
               <PanelRightOpen size={16} />
@@ -591,8 +593,8 @@ export default function LibraryView() {
               <button
                 type="button"
                 onClick={() => setIsEvaluationPanelOpen(true)}
-                title={`评分 ${Math.round(selectedPhoto.aesthetic_score)}`}
-                aria-label="展开分析面板"
+                title={t("library.score", { score: Math.round(selectedPhoto.aesthetic_score) })}
+                aria-label={t("library.expandAnalysis")}
                 className="mt-2 flex min-h-8 w-8 items-center justify-center rounded-md bg-amber-100 px-1 text-[11px] font-semibold text-amber-700 hover:bg-amber-200"
               >
                 {Math.round(selectedPhoto.aesthetic_score)}
@@ -606,6 +608,7 @@ export default function LibraryView() {
 }
 
 function EvaluationPanel({ photo, onCollapse }: { photo: Photo; onCollapse: () => void }) {
+  const { t } = useI18n();
   const evaluation = photo.latest_evaluation;
   const setCurrentView = useAppStore((s) => s.setCurrentView);
 
@@ -625,8 +628,8 @@ function EvaluationPanel({ photo, onCollapse }: { photo: Photo; onCollapse: () =
           <button
             type="button"
             onClick={onCollapse}
-            title="折叠分析面板"
-            aria-label="折叠分析面板"
+            title={t("library.collapseAnalysis")}
+            aria-label={t("library.collapseAnalysis")}
             className="rounded-md p-1.5 text-gray-400 hover:bg-white hover:text-gray-800"
           >
             <PanelRightClose size={15} />
@@ -636,14 +639,14 @@ function EvaluationPanel({ photo, onCollapse }: { photo: Photo; onCollapse: () =
 
       {!evaluation ? (
         <div className="rounded-lg border border-dashed border-gray-200 bg-white p-4">
-          <p className="text-sm text-gray-500">这张照片还没有 AI 评价。</p>
+          <p className="text-sm text-gray-500">{t("library.noAiEvaluation")}</p>
           <button
             type="button"
             onClick={() => setCurrentView("scoring")}
             className="mt-3 flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700"
           >
             <WandSparkles size={14} />
-            生成 AI 分析
+            {t("library.generateAiAnalysis")}
           </button>
         </div>
       ) : (
@@ -651,7 +654,7 @@ function EvaluationPanel({ photo, onCollapse }: { photo: Photo; onCollapse: () =
           <section className="rounded-lg border border-gray-200 bg-white p-4">
             <div className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-800">
               <Sparkles size={15} className="text-blue-500" />
-              AI 评价
+              {t("library.aiEvaluation")}
             </div>
             <p className="text-sm leading-6 text-gray-600">{evaluation.summary}</p>
             <p className="mt-3 text-[11px] text-gray-400">
@@ -659,13 +662,13 @@ function EvaluationPanel({ photo, onCollapse }: { photo: Photo; onCollapse: () =
             </p>
           </section>
 
-          <EvaluationList title="优点" items={evaluation.strengths} tone="green" />
-          <EvaluationList title="不足" items={evaluation.weaknesses} tone="amber" />
-          <EvaluationList title="建议" items={evaluation.suggestions} tone="blue" />
+          <EvaluationList title={t("library.strengths")} items={evaluation.strengths} tone="green" />
+          <EvaluationList title={t("library.weaknesses")} items={evaluation.weaknesses} tone="amber" />
+          <EvaluationList title={t("library.suggestions")} items={evaluation.suggestions} tone="blue" />
 
           {evaluation.dimension_scores.length > 0 && (
             <section className="rounded-lg border border-gray-200 bg-white p-4">
-              <h3 className="mb-3 text-sm font-medium text-gray-800">维度评分</h3>
+              <h3 className="mb-3 text-sm font-medium text-gray-800">{t("library.dimensionScores")}</h3>
               <div className="space-y-3">
                 {evaluation.dimension_scores.map((dimension) => (
                   <div key={dimension.name}>

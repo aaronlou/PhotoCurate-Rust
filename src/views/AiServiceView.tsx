@@ -48,15 +48,62 @@ import {
 } from "@/lib/aiService";
 import {
   BILLING_PLANS,
+  billingProviderTranslationKey,
   billingProviderLabel,
-  billingStatusLabel,
+  billingStatusTranslationKey,
   formatCredits,
   getBillingPlan,
   getPlanPrice,
   usagePercent,
 } from "@/lib/billing";
+import { useI18n, type SupportedLocale, type TranslationKey } from "@/lib/i18n";
+
+function localizedBillingStatus(
+  status: BillingStatus | null | undefined,
+  t: (key: TranslationKey) => string,
+  fallback: string,
+) {
+  return status ? t(billingStatusTranslationKey(status.status)) : fallback;
+}
+
+function localizedBillingProvider(
+  status: BillingStatus | null,
+  t: (key: TranslationKey) => string,
+) {
+  const key = billingProviderTranslationKey(status);
+  return key ? t(key) : billingProviderLabel(status);
+}
+
+function localizedPlanText(
+  planId: BillingPlanId,
+  field: "audience" | "price" | "monthly" | "annual" | "feature1" | "feature2" | "cta",
+  fallback: string,
+  t: (key: TranslationKey) => string,
+) {
+  const key = `billing.plan.${planId}.${field}` as TranslationKey;
+  const value = t(key);
+  return value === key ? fallback : value;
+}
+
+function localizedProviderLabel(provider: ReturnType<typeof providerConfig>, t: (key: TranslationKey) => string) {
+  if (provider.id === "openai_compatible_vision") {
+    return t("provider.openai_compatible_vision.label");
+  }
+  return provider.label;
+}
+
+function localizedProviderDescription(provider: ReturnType<typeof providerConfig>, t: (key: TranslationKey) => string) {
+  if (provider.id === "gemini") {
+    return t("provider.gemini.description");
+  }
+  if (provider.id === "qwen_vl") {
+    return t("provider.qwen_vl.description");
+  }
+  return t("provider.openai_compatible_vision.description");
+}
 
 export default function AiServiceView() {
+  const { t } = useI18n();
   const aiSettings = useAppStore((s) => s.aiSettings);
   const setAiSettings = useAppStore((s) => s.setAiSettings);
   const photos = useAppStore((s) => s.photos);
@@ -79,10 +126,10 @@ export default function AiServiceView() {
   const hasScoringKey = aiSettings?.scoring_provider === scoringProvider && Boolean(aiSettings?.has_scoring_api_key);
   const providerNeedsBaseUrl = scoringProvider !== "gemini";
   const managedAiBadge = billingStatus?.canUseManagedAi
-    ? "可用"
+    ? t("scoring.statusAvailable")
     : billingStatus
-    ? billingStatusLabel(billingStatus.status)
-    : "检测中";
+    ? t(billingStatusTranslationKey(billingStatus.status))
+    : t("scoring.statusChecking");
 
   useEffect(() => {
     checkLocalModel().then(setLocalModelAvailable).catch(() => setLocalModelAvailable(false));
@@ -101,9 +148,9 @@ export default function AiServiceView() {
       .then(setBillingStatus)
       .catch((error) => {
         console.error(error);
-        setBillingMessage("无法读取订阅状态，请稍后重试。");
+        setBillingMessage(t("aiService.billingFetchFailed"));
       });
-  }, [setAiSettings]);
+  }, [setAiSettings, t]);
 
   const syncSettingsForm = (settings: AISettings) => {
     const provider = settings.scoring_provider ?? "gemini";
@@ -162,7 +209,7 @@ export default function AiServiceView() {
     });
     setAiSettings(settings);
     syncSettingsForm(settings);
-    setKeyStatus({ valid: true, message: "模型设置已保存" });
+    setKeyStatus({ valid: true, message: t("aiService.modelSettingsSaved") });
   };
 
   const runBillingAction = async (
@@ -189,16 +236,16 @@ export default function AiServiceView() {
           <div>
             <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-800">
               <Sparkles size={20} className="text-blue-600" />
-              AI 服务
+              {t("aiService.title")}
             </h2>
             <p className="mt-1 text-sm text-gray-500">
-              管理 PhotoCurate 的 AI 能力、分析额度、订阅方案和高级 API Key
+              {t("aiService.subtitle")}
             </p>
           </div>
           <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-right">
-            <p className="text-[11px] font-medium text-gray-400">当前模式</p>
+            <p className="text-[11px] font-medium text-gray-400">{t("aiService.currentMode")}</p>
             <p className="mt-0.5 text-sm font-semibold text-gray-800">
-              {serviceMode === "photocurate_ai" ? "PhotoCurate AI" : `${activeProvider.label} BYOK`}
+              {serviceMode === "photocurate_ai" ? "PhotoCurate AI" : `${localizedProviderLabel(activeProvider, t)} BYOK`}
             </p>
           </div>
         </div>
@@ -210,13 +257,13 @@ export default function AiServiceView() {
             <section className="rounded-lg border border-gray-200 bg-white p-5">
               <div className="mb-4 flex items-center justify-between gap-4">
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-800">选择 AI 使用方式</h3>
+                  <h3 className="text-sm font-semibold text-gray-800">{t("aiService.chooseModeTitle")}</h3>
                   <p className="mt-1 text-xs text-gray-500">
-                    普通用户使用托管 AI；高级用户可继续用自己的模型账号。
+                    {t("aiService.chooseModeSubtitle")}
                   </p>
                 </div>
                 <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
-                  推荐 PhotoCurate AI
+                  {t("aiService.recommendedManaged")}
                 </span>
               </div>
 
@@ -226,15 +273,15 @@ export default function AiServiceView() {
                   icon={<Sparkles size={17} />}
                   title="PhotoCurate AI"
                   badge={managedAiBadge}
-                  description="无需申请 API Key。由产品统一提供评分、点评、洞察报告和模型升级。"
+                  description={t("aiService.managedDescription")}
                   onClick={() => selectServiceMode("photocurate_ai")}
                 />
                 <ModeCard
                   active={serviceMode === "byok"}
                   icon={<SlidersHorizontal size={17} />}
-                  title="自带 API Key"
-                  badge={hasScoringKey ? "已配置" : "需配置"}
-                  description="使用 Gemini、Qwen-VL 或自定义 OpenAI-compatible Vision API，费用由服务商收取。"
+                  title={t("aiService.byokTitle")}
+                  badge={hasScoringKey ? t("aiService.byokBadgeConfigured") : t("aiService.byokBadgeNeedsConfig")}
+                  description={t("aiService.byokDescription")}
                   onClick={() => selectServiceMode("byok")}
                 />
               </div>
@@ -286,7 +333,7 @@ export default function AiServiceView() {
           <aside className="space-y-5">
             <ServiceStatusPanel
               serviceMode={serviceMode}
-              providerLabel={activeProvider.label}
+              providerLabel={localizedProviderLabel(activeProvider, t)}
               configuredModel={configuredModel}
               hasScoringKey={hasScoringKey}
               evaluatedCount={evaluatedCount}
@@ -361,21 +408,22 @@ function ManagedAiPanel({
   onRestore: () => void;
   onOpenPortal: () => void;
 }) {
+  const { t, locale } = useI18n();
   const valueItems = [
     {
       icon: <Images size={14} />,
-      title: "跨作品库分析",
-      description: "不只点评单张照片，而是识别你长期作品里的题材偏好、稳定优势和反复短板。",
+      title: t("aiService.crossLibraryTitle"),
+      description: t("aiService.crossLibraryDescription"),
     },
     {
       icon: <TrendingUp size={14} />,
-      title: "成长趋势报告",
-      description: "按时间追踪评分、维度和标签变化，帮你看到拍摄习惯是否真的在进步。",
+      title: t("aiService.growthTitle"),
+      description: t("aiService.growthDescription"),
     },
     {
       icon: <Target size={14} />,
-      title: "练习路径建议",
-      description: "把评价沉淀成可执行训练主题，比如构图、光线、主体表达和后期取舍。",
+      title: t("aiService.practiceTitle"),
+      description: t("aiService.practiceDescription"),
     },
   ];
   const currentPlan = getBillingPlan((billingStatus?.planId as BillingPlanId | undefined) ?? "free");
@@ -394,10 +442,10 @@ function ManagedAiPanel({
             <div>
               <div className="flex items-center gap-2">
                 <Zap size={16} className="text-blue-600" />
-                <h3 className="text-sm font-semibold text-gray-800">PhotoCurate AI 订阅</h3>
+                <h3 className="text-sm font-semibold text-gray-800">{t("aiService.subscriptionTitle")}</h3>
               </div>
               <p className="mt-2 text-sm leading-6 text-gray-500">
-                普通用户无需申请模型 API Key。订阅后由 PhotoCurate 提供评分、点评、洞察报告和模型升级。
+                {t("aiService.subscriptionDescription")}
               </p>
             </div>
             <div className="flex rounded-md border border-gray-200 bg-gray-50 p-0.5">
@@ -412,7 +460,7 @@ function ManagedAiPanel({
                       : "text-gray-500 hover:text-gray-700"
                   }`}
                 >
-                  {interval === "monthly" ? "月付" : "年付"}
+                  {interval === "monthly" ? t("aiService.monthly") : t("aiService.annual")}
                 </button>
               ))}
             </div>
@@ -447,11 +495,11 @@ function ManagedAiPanel({
 
         <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-gray-500">分析额度</span>
+            <span className="text-xs font-medium text-gray-500">{t("aiService.creditUsage")}</span>
             <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
               billingStatus?.canUseManagedAi ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"
             }`}>
-              {billingStatus ? billingStatusLabel(billingStatus.status) : "检测中"}
+              {localizedBillingStatus(billingStatus, t, t("scoring.statusChecking"))}
             </span>
           </div>
           <div className="mt-4">
@@ -460,7 +508,7 @@ function ManagedAiPanel({
                 {formatCredits(remainingCredits)}
               </span>
               <span className="pb-1 text-xs text-gray-400">
-                / {formatCredits(includedCredits)} 张可用
+                {t("aiService.availableCredits", { credits: formatCredits(includedCredits) })}
               </span>
             </div>
             <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-200">
@@ -471,24 +519,26 @@ function ManagedAiPanel({
             </div>
           </div>
           <p className="mt-3 text-xs leading-5 text-gray-500">
-            本周期已使用 {formatCredits(usedCredits)} 张。当前已积累 {evaluatedCount} 张结构化评价，
-            托管服务会基于这些历史数据生成更完整的周期报告。
+            {t("aiService.usageDescription", {
+              used: formatCredits(usedCredits),
+              evaluated: evaluatedCount,
+            })}
           </p>
           <div className="mt-4 space-y-2 rounded-md border border-gray-200 bg-white p-3">
             <StatusRow
               icon={<CreditCard size={14} />}
-              label="当前方案"
+              label={t("aiService.currentPlan")}
               value={currentPlan.name}
             />
             <StatusRow
               icon={<ReceiptText size={14} />}
-              label="支付渠道"
-              value={billingProviderLabel(billingStatus)}
+              label={t("aiService.paymentProvider")}
+              value={localizedBillingProvider(billingStatus, t)}
             />
             <StatusRow
               icon={<CalendarDays size={14} />}
-              label="续订时间"
-              value={formatBillingDate(billingStatus?.renewsAt)}
+              label={t("aiService.renewalDate")}
+              value={formatBillingDate(billingStatus?.renewsAt, locale, t("aiService.dateUnset"))}
             />
           </div>
 
@@ -512,7 +562,7 @@ function ManagedAiPanel({
               className="flex items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <RefreshCw size={13} className={billingBusyAction === "restore" ? "animate-spin" : ""} />
-              恢复购买
+              {t("aiService.restorePurchases")}
             </button>
             <button
               type="button"
@@ -521,13 +571,12 @@ function ManagedAiPanel({
               className="flex items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <ExternalLink size={13} />
-              管理订阅
+              {t("aiService.manageSubscription")}
             </button>
           </div>
 
           <div className="mt-3 rounded-md border border-gray-200 bg-white px-3 py-2 text-xs leading-5 text-gray-500">
-            自带 API Key 模式不需要订阅；托管 AI 会把待分析照片发送到 PhotoCurate 服务端调用模型，
-            仅用于生成评分和点评，不会读取你的钥匙串密钥。
+            {t("aiService.managedPrivacyNote")}
           </div>
         </div>
       </div>
@@ -568,16 +617,19 @@ function ByokSettingsPanel({
   onValidateKey: () => void;
   onSaveModelSettings: () => void;
 }) {
+  const { t } = useI18n();
+  const activeProviderLabel = localizedProviderLabel(activeProvider, t);
+
   return (
     <section className="rounded-lg border border-gray-200 bg-white p-5">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-gray-800">高级 API Key 设置</h3>
-          <p className="mt-1 text-xs text-gray-500">使用你自己的模型账号，API 费用由对应服务商收取。</p>
+          <h3 className="text-sm font-semibold text-gray-800">{t("aiService.byokSettingsTitle")}</h3>
+          <p className="mt-1 text-xs text-gray-500">{t("aiService.byokSettingsDescription")}</p>
         </div>
         <div className={`flex items-center gap-1.5 text-xs ${hasScoringKey ? "text-green-600" : "text-amber-600"}`}>
           <KeyRound size={13} />
-          {hasScoringKey ? "已保存密钥" : "未保存密钥"}
+          {hasScoringKey ? t("aiService.keySaved") : t("aiService.keyNotSaved")}
         </div>
       </div>
 
@@ -594,15 +646,15 @@ function ByokSettingsPanel({
                   : "border-gray-200 bg-white text-gray-700 hover:border-gray-300"
               }`}
             >
-              <span className="block text-sm font-medium">{provider.label}</span>
-              <span className="mt-0.5 block text-xs text-gray-500">{provider.description}</span>
+              <span className="block text-sm font-medium">{localizedProviderLabel(provider, t)}</span>
+              <span className="mt-0.5 block text-xs text-gray-500">{localizedProviderDescription(provider, t)}</span>
             </button>
           ))}
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="mb-1 block text-xs text-gray-500">模型</label>
+            <label className="mb-1 block text-xs text-gray-500">{t("aiService.model")}</label>
             <input
               type="text"
               value={scoringModel}
@@ -619,7 +671,7 @@ function ByokSettingsPanel({
                 type="text"
                 value={scoringBaseUrl}
                 onChange={(e) => onBaseUrlChange(e.target.value)}
-                placeholder={providerNeedsBaseUrl ? activeProvider.defaultBaseUrl || "https://api.example.com/v1" : "Gemini 不需要填写"}
+                placeholder={providerNeedsBaseUrl ? activeProvider.defaultBaseUrl || "https://api.example.com/v1" : t("aiService.geminiNoBaseUrl")}
                 disabled={!providerNeedsBaseUrl}
                 className="w-full rounded-md border border-gray-300 bg-white py-2 pl-8 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
               />
@@ -628,13 +680,17 @@ function ByokSettingsPanel({
         </div>
 
         <div>
-          <label className="mb-1 block text-xs text-gray-500">{activeProvider.label} API Key</label>
+          <label className="mb-1 block text-xs text-gray-500">{activeProviderLabel} API Key</label>
           <div className="flex gap-2">
             <input
               type="password"
               value={apiKey}
               onChange={(e) => onApiKeyChange(e.target.value)}
-              placeholder={hasScoringKey ? "留空则继续使用已保存密钥" : `输入 ${activeProvider.label} API Key`}
+              placeholder={
+                hasScoringKey
+                  ? t("aiService.apiKeyPlaceholderSaved")
+                  : t("aiService.apiKeyPlaceholderNew", { provider: activeProviderLabel })
+              }
               className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <button
@@ -643,14 +699,14 @@ function ByokSettingsPanel({
               disabled={!apiKey.trim()}
               className="rounded-md bg-gray-800 px-3 py-2 text-sm text-white hover:bg-gray-900 disabled:opacity-50"
             >
-              验证
+              {t("aiService.validate")}
             </button>
             <button
               type="button"
               onClick={onSaveModelSettings}
               className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
             >
-              保存
+              {t("aiService.save")}
             </button>
           </div>
           {keyStatus && (
@@ -664,7 +720,7 @@ function ByokSettingsPanel({
         </div>
 
         <div className="text-xs text-gray-500">
-          当前评分: {activeProvider.label}
+          {t("aiService.currentScoring", { provider: activeProviderLabel })}
           <span className="mx-1 text-gray-300">/</span>
           {configuredModel}
         </div>
@@ -690,43 +746,45 @@ function ServiceStatusPanel({
   localModelAvailable: boolean | null;
   billingStatus: BillingStatus | null;
 }) {
+  const { t } = useI18n();
+
   return (
     <section className="rounded-lg border border-gray-200 bg-white p-5">
-      <h3 className="text-sm font-semibold text-gray-800">服务状态</h3>
+      <h3 className="text-sm font-semibold text-gray-800">{t("aiService.statusTitle")}</h3>
       <div className="mt-4 space-y-3">
         <StatusRow
           icon={<Sparkles size={14} />}
-          label="AI 模式"
-          value={serviceMode === "photocurate_ai" ? "PhotoCurate AI" : "自带 API Key"}
+          label={t("aiService.aiMode")}
+          value={serviceMode === "photocurate_ai" ? "PhotoCurate AI" : t("aiService.byokTitle")}
         />
         <StatusRow
           icon={<KeyRound size={14} />}
-          label="评分模型"
-          value={serviceMode === "photocurate_ai" ? "托管模型" : `${providerLabel} / ${configuredModel}`}
+          label={t("aiService.scoringModel")}
+          value={serviceMode === "photocurate_ai" ? t("aiService.managedModel") : `${providerLabel} / ${configuredModel}`}
         />
         <StatusRow
           icon={<ShieldCheck size={14} />}
-          label="密钥状态"
-          value={serviceMode === "photocurate_ai" ? "无需钥匙串" : hasScoringKey ? "已保存" : "未配置"}
+          label={t("aiService.keyStatus")}
+          value={serviceMode === "photocurate_ai" ? t("aiService.noKeychainNeeded") : hasScoringKey ? t("aiService.saved") : t("scoring.statusNotConfigured")}
         />
         <StatusRow
           icon={<CreditCard size={14} />}
-          label="订阅状态"
+          label={t("aiService.subscriptionStatus")}
           value={serviceMode === "photocurate_ai" && billingStatus
-            ? billingStatusLabel(billingStatus.status)
+            ? t(billingStatusTranslationKey(billingStatus.status))
             : serviceMode === "photocurate_ai"
-            ? "检测中"
-            : "不需要"}
+            ? t("scoring.statusChecking")
+            : t("aiService.notNeeded")}
         />
         <StatusRow
           icon={<Cpu size={14} />}
-          label="本地检索模型"
-          value={localModelAvailable == null ? "检测中" : localModelAvailable ? "已加载" : "未加载"}
+          label={t("aiService.localSearchModel")}
+          value={localModelAvailable == null ? t("scoring.statusChecking") : localModelAvailable ? t("aiService.loaded") : t("aiService.notLoaded")}
         />
         <StatusRow
           icon={<BarChart3 size={14} />}
-          label="评价数据"
-          value={`${evaluatedCount} 张`}
+          label={t("aiService.evaluationData")}
+          value={t("aiService.photoCount", { count: evaluatedCount })}
         />
       </div>
     </section>
@@ -734,21 +792,23 @@ function ServiceStatusPanel({
 }
 
 function DifferentiationPanel() {
+  const { t } = useI18n();
+
   return (
     <section className="rounded-lg border border-gray-200 bg-white p-5">
-      <h3 className="text-sm font-semibold text-gray-800">为什么不是普通 LLM</h3>
+      <h3 className="text-sm font-semibold text-gray-800">{t("aiService.diffTitle")}</h3>
       <div className="mt-4 space-y-3 text-xs leading-5 text-gray-500">
         <div className="flex items-start gap-2">
           <BarChart3 size={14} className="mt-0.5 shrink-0 text-blue-600" />
-          <span>PhotoCurate 会把单张评分、维度、点评、标签汇总成作品库级别的长期画像。</span>
+          <span>{t("aiService.diffProfile")}</span>
         </div>
         <div className="flex items-start gap-2">
           <TrendingUp size={14} className="mt-0.5 shrink-0 text-green-600" />
-          <span>洞察报告会随着你的拍摄积累更新，关注趋势和反复出现的问题。</span>
+          <span>{t("aiService.diffInsights")}</span>
         </div>
         <div className="flex items-start gap-2">
           <CreditCard size={14} className="mt-0.5 shrink-0 text-amber-600" />
-          <span>未来付费会围绕分析额度、报告深度、作品集建议和高级训练计划展开。</span>
+          <span>{t("aiService.diffBilling")}</span>
         </div>
       </div>
     </section>
@@ -782,8 +842,20 @@ function PlanCard({
   checkoutAvailable: boolean;
   onStartCheckout: () => void;
 }) {
+  const { t } = useI18n();
   const isFree = plan.id === "free";
   const disabled = isFree || isCurrent || !checkoutAvailable || busy;
+  const audience = localizedPlanText(plan.id, "audience", plan.audience, t);
+  const price = plan.id === "free"
+    ? localizedPlanText(plan.id, "price", getPlanPrice(plan, interval), t)
+    : interval === "annual"
+    ? localizedPlanText(plan.id, "annual", getPlanPrice(plan, interval), t)
+    : localizedPlanText(plan.id, "monthly", getPlanPrice(plan, interval), t);
+  const features = [
+    localizedPlanText(plan.id, "feature1", plan.features[0] ?? "", t),
+    localizedPlanText(plan.id, "feature2", plan.features[1] ?? "", t),
+  ].filter(Boolean);
+  const cta = localizedPlanText(plan.id, "cta", plan.cta, t);
 
   return (
     <div
@@ -794,20 +866,20 @@ function PlanCard({
       <div className="flex min-h-8 items-start justify-between gap-2">
         <div>
           <p className="text-xs font-semibold text-gray-800">{plan.name}</p>
-          <p className="mt-0.5 text-[11px] text-gray-500">{plan.audience}</p>
+          <p className="mt-0.5 text-[11px] text-gray-500">{audience}</p>
         </div>
         {plan.recommended && (
           <span className="rounded-full bg-blue-600 px-1.5 py-0.5 text-[10px] font-medium text-white">
-            推荐
+            {t("aiService.recommended")}
           </span>
         )}
       </div>
-      <p className="mt-3 text-sm font-semibold text-gray-900">{getPlanPrice(plan, interval)}</p>
+      <p className="mt-3 text-sm font-semibold text-gray-900">{price}</p>
       <p className="mt-1 text-[11px] text-gray-500">
-        {formatCredits(plan.includedCredits)} 张托管 AI 额度
+        {t("aiService.hostedCredits", { credits: formatCredits(plan.includedCredits) })}
       </p>
       <ul className="mt-3 space-y-1.5">
-        {plan.features.slice(0, 2).map((feature) => (
+        {features.map((feature) => (
           <li key={feature} className="flex gap-1.5 text-[11px] leading-4 text-gray-600">
             <Check size={12} className="mt-0.5 shrink-0 text-green-600" />
             <span>{feature}</span>
@@ -824,15 +896,15 @@ function PlanCard({
             : "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400"
         } disabled:cursor-not-allowed`}
       >
-        {busy ? "处理中..." : isCurrent ? "当前方案" : plan.cta}
+        {busy ? t("aiService.processing") : isCurrent ? t("aiService.currentPlanAction") : cta}
       </button>
     </div>
   );
 }
 
-function formatBillingDate(value?: string | null) {
-  if (!value) return "未设置";
-  return new Intl.DateTimeFormat("zh-CN", {
+function formatBillingDate(value: string | null | undefined, locale: SupportedLocale, fallback: string) {
+  if (!value) return fallback;
+  return new Intl.DateTimeFormat(locale, {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
