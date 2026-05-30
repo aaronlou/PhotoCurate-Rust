@@ -156,6 +156,18 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<()> {
     .execute(pool)
     .await?;
 
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS app_metadata (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
     ensure_ai_settings_column(pool, "scoring_provider", "TEXT NOT NULL DEFAULT 'gemini'").await?;
     ensure_ai_settings_column(
         pool,

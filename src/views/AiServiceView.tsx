@@ -3,17 +3,25 @@ import { useAppStore } from "@/stores/useAppStore";
 import {
   checkLocalModel,
   getAiSettings,
+  getBillingStatus,
+  openBillingPortal,
+  restoreManagedAiPurchases,
+  startManagedAiCheckout,
   updateAiSettings,
   validateApiKey,
 } from "@/hooks/useInvoke";
 import {
   AlertCircle,
   BarChart3,
+  CalendarDays,
   Check,
   CreditCard,
   Cpu,
+  ExternalLink,
   Images,
   KeyRound,
+  ReceiptText,
+  RefreshCw,
   Server,
   ShieldCheck,
   SlidersHorizontal,
@@ -22,7 +30,14 @@ import {
   TrendingUp,
   Zap,
 } from "lucide-react";
-import type { AISettings, ScoringProvider } from "@/types";
+import type {
+  AISettings,
+  BillingActionResult,
+  BillingInterval,
+  BillingPlanId,
+  BillingStatus,
+  ScoringProvider,
+} from "@/types";
 import {
   AiServiceMode,
   persistAiServiceMode,
@@ -31,6 +46,15 @@ import {
   readStoredAiServiceMode,
   resolveInitialAiServiceMode,
 } from "@/lib/aiService";
+import {
+  BILLING_PLANS,
+  billingProviderLabel,
+  billingStatusLabel,
+  formatCredits,
+  getBillingPlan,
+  getPlanPrice,
+  usagePercent,
+} from "@/lib/billing";
 
 export default function AiServiceView() {
   const aiSettings = useAppStore((s) => s.aiSettings);
@@ -44,12 +68,21 @@ export default function AiServiceView() {
   const [apiKey, setApiKey] = useState("");
   const [keyStatus, setKeyStatus] = useState<{ valid: boolean; message: string } | null>(null);
   const [localModelAvailable, setLocalModelAvailable] = useState<boolean | null>(null);
+  const [billingStatus, setBillingStatus] = useState<BillingStatus | null>(null);
+  const [billingInterval, setBillingInterval] = useState<BillingInterval>("monthly");
+  const [billingMessage, setBillingMessage] = useState<string | null>(null);
+  const [billingBusyAction, setBillingBusyAction] = useState<string | null>(null);
 
   const evaluatedCount = photos.filter((p) => p.latest_evaluation).length;
   const activeProvider = providerConfig(scoringProvider);
   const configuredModel = aiSettings?.scoring_model || activeProvider.defaultModel;
   const hasScoringKey = aiSettings?.scoring_provider === scoringProvider && Boolean(aiSettings?.has_scoring_api_key);
   const providerNeedsBaseUrl = scoringProvider !== "gemini";
+  const managedAiBadge = billingStatus?.canUseManagedAi
+    ? "可用"
+    : billingStatus
+    ? billingStatusLabel(billingStatus.status)
+    : "检测中";
 
   useEffect(() => {
     checkLocalModel().then(setLocalModelAvailable).catch(() => setLocalModelAvailable(false));
@@ -64,6 +97,12 @@ export default function AiServiceView() {
         }
       })
       .catch(console.error);
+    getBillingStatus()
+      .then(setBillingStatus)
+      .catch((error) => {
+        console.error(error);
+        setBillingMessage("无法读取订阅状态，请稍后重试。");
+      });
   }, [setAiSettings]);
 
   const syncSettingsForm = (settings: AISettings) => {
@@ -126,6 +165,23 @@ export default function AiServiceView() {
     setKeyStatus({ valid: true, message: "模型设置已保存" });
   };
 
+  const runBillingAction = async (
+    actionKey: string,
+    action: () => Promise<BillingActionResult>
+  ) => {
+    setBillingBusyAction(actionKey);
+    setBillingMessage(null);
+    try {
+      const result = await action();
+      setBillingStatus(result.status);
+      setBillingMessage(result.message);
+    } catch (error) {
+      setBillingMessage(typeof error === "string" ? error : String(error));
+    } finally {
+      setBillingBusyAction(null);
+    }
+  };
+
   return (
     <div className="flex h-full flex-col bg-[#f7f8fa]">
       <header className="border-b border-gray-200 bg-white px-6 py-5">
@@ -169,7 +225,7 @@ export default function AiServiceView() {
                   active={serviceMode === "photocurate_ai"}
                   icon={<Sparkles size={17} />}
                   title="PhotoCurate AI"
-                  badge="即将开放"
+                  badge={managedAiBadge}
                   description="无需申请 API Key。由产品统一提供评分、点评、洞察报告和模型升级。"
                   onClick={() => selectServiceMode("photocurate_ai")}
                 />
@@ -185,7 +241,21 @@ export default function AiServiceView() {
             </section>
 
             {serviceMode === "photocurate_ai" ? (
-              <ManagedAiPanel evaluatedCount={evaluatedCount} />
+              <ManagedAiPanel
+                billingStatus={billingStatus}
+                billingInterval={billingInterval}
+                billingMessage={billingMessage}
+                billingBusyAction={billingBusyAction}
+                evaluatedCount={evaluatedCount}
+                onIntervalChange={setBillingInterval}
+                onStartCheckout={(planId) =>
+                  runBillingAction(`checkout:${planId}`, () =>
+                    startManagedAiCheckout(planId, billingInterval)
+                  )
+                }
+                onRestore={() => runBillingAction("restore", restoreManagedAiPurchases)}
+                onOpenPortal={() => runBillingAction("portal", openBillingPortal)}
+              />
             ) : (
               <ByokSettingsPanel
                 activeProvider={activeProvider}
@@ -221,6 +291,7 @@ export default function AiServiceView() {
               hasScoringKey={hasScoringKey}
               evaluatedCount={evaluatedCount}
               localModelAvailable={localModelAvailable}
+              billingStatus={billingStatus}
             />
             <DifferentiationPanel />
           </aside>
@@ -269,7 +340,27 @@ function ModeCard({
   );
 }
 
-function ManagedAiPanel({ evaluatedCount }: { evaluatedCount: number }) {
+function ManagedAiPanel({
+  billingStatus,
+  billingInterval,
+  billingMessage,
+  billingBusyAction,
+  evaluatedCount,
+  onIntervalChange,
+  onStartCheckout,
+  onRestore,
+  onOpenPortal,
+}: {
+  billingStatus: BillingStatus | null;
+  billingInterval: BillingInterval;
+  billingMessage: string | null;
+  billingBusyAction: string | null;
+  evaluatedCount: number;
+  onIntervalChange: (interval: BillingInterval) => void;
+  onStartCheckout: (planId: BillingPlanId) => void;
+  onRestore: () => void;
+  onOpenPortal: () => void;
+}) {
   const valueItems = [
     {
       icon: <Images size={14} />,
@@ -287,18 +378,46 @@ function ManagedAiPanel({ evaluatedCount }: { evaluatedCount: number }) {
       description: "把评价沉淀成可执行训练主题，比如构图、光线、主体表达和后期取舍。",
     },
   ];
+  const currentPlan = getBillingPlan((billingStatus?.planId as BillingPlanId | undefined) ?? "free");
+  const percent = usagePercent(billingStatus);
+  const remainingCredits = billingStatus?.usage.remainingCredits ?? currentPlan.includedCredits;
+  const includedCredits = billingStatus?.usage.includedCredits ?? currentPlan.includedCredits;
+  const usedCredits = billingStatus?.usage.usedCredits ?? 0;
+  const canManageBilling = Boolean(billingStatus?.billingPortalAvailable);
+  const canRestorePurchases = Boolean(billingStatus?.restoreAvailable);
 
   return (
     <section className="rounded-lg border border-blue-100 bg-white p-5">
-      <div className="grid grid-cols-[1fr_0.8fr] gap-5">
+      <div className="grid grid-cols-[1fr_0.82fr] gap-5">
         <div>
-          <div className="flex items-center gap-2">
-            <Zap size={16} className="text-blue-600" />
-            <h3 className="text-sm font-semibold text-gray-800">PhotoCurate AI 托管服务</h3>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <Zap size={16} className="text-blue-600" />
+                <h3 className="text-sm font-semibold text-gray-800">PhotoCurate AI 订阅</h3>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-gray-500">
+                普通用户无需申请模型 API Key。订阅后由 PhotoCurate 提供评分、点评、洞察报告和模型升级。
+              </p>
+            </div>
+            <div className="flex rounded-md border border-gray-200 bg-gray-50 p-0.5">
+              {(["monthly", "annual"] as BillingInterval[]).map((interval) => (
+                <button
+                  key={interval}
+                  type="button"
+                  onClick={() => onIntervalChange(interval)}
+                  className={`rounded px-3 py-1.5 text-xs font-medium ${
+                    billingInterval === interval
+                      ? "bg-white text-blue-600 shadow-sm"
+                      : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  {interval === "monthly" ? "月付" : "年付"}
+                </button>
+              ))}
+            </div>
           </div>
-          <p className="mt-2 text-sm leading-6 text-gray-500">
-            差异化不在于替用户调用一次 LLM，而在于把大量作品的评分和点评沉淀成持续画像、报告和训练反馈。
-          </p>
+
           <div className="mt-4 grid grid-cols-3 gap-2">
             {valueItems.map((item) => (
               <div key={item.title} className="rounded-md border border-gray-200 bg-gray-50 p-3">
@@ -310,39 +429,106 @@ function ManagedAiPanel({ evaluatedCount }: { evaluatedCount: number }) {
               </div>
             ))}
           </div>
+
           <div className="mt-4 grid grid-cols-3 gap-2">
-            <PlanPreview title="Free Trial" description="少量作品分析额度" detail="适合第一次导入照片" />
-            <PlanPreview title="Plus" description="月度额度和成长报告" detail="适合持续拍摄用户" />
-            <PlanPreview title="Pro" description="高级洞察与作品集建议" detail="AI 分析额度可另购" />
+            {BILLING_PLANS.map((plan) => (
+              <PlanCard
+                key={plan.id}
+                plan={plan}
+                interval={billingInterval}
+                isCurrent={billingStatus?.planId === plan.id}
+                busy={billingBusyAction === `checkout:${plan.id}`}
+                checkoutAvailable={Boolean(billingStatus?.checkoutAvailable)}
+                onStartCheckout={() => onStartCheckout(plan.id)}
+              />
+            ))}
           </div>
         </div>
 
         <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-gray-500">分析额度</span>
-            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-medium text-blue-700">
-              Coming Soon
+            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+              billingStatus?.canUseManagedAi ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"
+            }`}>
+              {billingStatus ? billingStatusLabel(billingStatus.status) : "检测中"}
             </span>
           </div>
           <div className="mt-4">
             <div className="flex items-end gap-2">
-              <span className="text-3xl font-semibold tracking-tight text-gray-900">0</span>
-              <span className="pb-1 text-xs text-gray-400">/ 1000 张作品分析</span>
+              <span className="text-3xl font-semibold tracking-tight text-gray-900">
+                {formatCredits(remainingCredits)}
+              </span>
+              <span className="pb-1 text-xs text-gray-400">
+                / {formatCredits(includedCredits)} 张可用
+              </span>
             </div>
             <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-200">
-              <div className="h-full w-0 rounded-full bg-blue-600" />
+              <div
+                className="h-full rounded-full bg-blue-600 transition-all"
+                style={{ width: `${percent}%` }}
+              />
             </div>
           </div>
           <p className="mt-3 text-xs leading-5 text-gray-500">
-            当前已积累 {evaluatedCount} 张结构化评价。未来托管服务会基于这些历史数据生成更完整的周期报告。
+            本周期已使用 {formatCredits(usedCredits)} 张。当前已积累 {evaluatedCount} 张结构化评价，
+            托管服务会基于这些历史数据生成更完整的周期报告。
           </p>
-          <button
-            type="button"
-            disabled
-            className="mt-4 w-full rounded-md bg-gray-200 px-3 py-2 text-sm font-medium text-gray-500"
-          >
-            加入等待名单
-          </button>
+          <div className="mt-4 space-y-2 rounded-md border border-gray-200 bg-white p-3">
+            <StatusRow
+              icon={<CreditCard size={14} />}
+              label="当前方案"
+              value={currentPlan.name}
+            />
+            <StatusRow
+              icon={<ReceiptText size={14} />}
+              label="支付渠道"
+              value={billingProviderLabel(billingStatus)}
+            />
+            <StatusRow
+              icon={<CalendarDays size={14} />}
+              label="续订时间"
+              value={formatBillingDate(billingStatus?.renewsAt)}
+            />
+          </div>
+
+          {billingStatus?.message && (
+            <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+              {billingStatus.message}
+            </div>
+          )}
+
+          {billingMessage && (
+            <div className="mt-3 rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-800">
+              {billingMessage}
+            </div>
+          )}
+
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={onRestore}
+              disabled={!canRestorePurchases || billingBusyAction === "restore"}
+              className="flex items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <RefreshCw size={13} className={billingBusyAction === "restore" ? "animate-spin" : ""} />
+              恢复购买
+            </button>
+            <button
+              type="button"
+              onClick={onOpenPortal}
+              disabled={!canManageBilling || billingBusyAction === "portal"}
+              className="flex items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <ExternalLink size={13} />
+              管理订阅
+            </button>
+          </div>
+
+          <div className="mt-3 rounded-md border border-gray-200 bg-white px-3 py-2 text-xs leading-5 text-gray-500">
+            自带 API Key 模式不需要订阅；托管 AI 会把待分析照片发送到 PhotoCurate 服务端调用模型，
+            仅用于生成评分和点评，不会读取你的钥匙串密钥。
+          </div>
         </div>
       </div>
     </section>
@@ -494,6 +680,7 @@ function ServiceStatusPanel({
   hasScoringKey,
   evaluatedCount,
   localModelAvailable,
+  billingStatus,
 }: {
   serviceMode: AiServiceMode;
   providerLabel: string;
@@ -501,6 +688,7 @@ function ServiceStatusPanel({
   hasScoringKey: boolean;
   evaluatedCount: number;
   localModelAvailable: boolean | null;
+  billingStatus: BillingStatus | null;
 }) {
   return (
     <section className="rounded-lg border border-gray-200 bg-white p-5">
@@ -519,7 +707,16 @@ function ServiceStatusPanel({
         <StatusRow
           icon={<ShieldCheck size={14} />}
           label="密钥状态"
-          value={serviceMode === "photocurate_ai" ? "无需配置" : hasScoringKey ? "已保存" : "未配置"}
+          value={serviceMode === "photocurate_ai" ? "无需钥匙串" : hasScoringKey ? "已保存" : "未配置"}
+        />
+        <StatusRow
+          icon={<CreditCard size={14} />}
+          label="订阅状态"
+          value={serviceMode === "photocurate_ai" && billingStatus
+            ? billingStatusLabel(billingStatus.status)
+            : serviceMode === "photocurate_ai"
+            ? "检测中"
+            : "不需要"}
         />
         <StatusRow
           icon={<Cpu size={14} />}
@@ -570,12 +767,74 @@ function StatusRow({ icon, label, value }: { icon: React.ReactNode; label: strin
   );
 }
 
-function PlanPreview({ title, description, detail }: { title: string; description: string; detail: string }) {
+function PlanCard({
+  plan,
+  interval,
+  isCurrent,
+  busy,
+  checkoutAvailable,
+  onStartCheckout,
+}: {
+  plan: (typeof BILLING_PLANS)[number];
+  interval: BillingInterval;
+  isCurrent: boolean;
+  busy: boolean;
+  checkoutAvailable: boolean;
+  onStartCheckout: () => void;
+}) {
+  const isFree = plan.id === "free";
+  const disabled = isFree || isCurrent || !checkoutAvailable || busy;
+
   return (
-    <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
-      <p className="text-xs font-semibold text-gray-800">{title}</p>
-      <p className="mt-1 text-xs text-gray-500">{description}</p>
-      <p className="mt-2 text-[11px] text-gray-400">{detail}</p>
+    <div
+      className={`rounded-md border p-3 ${
+        plan.recommended ? "border-blue-200 bg-blue-50" : "border-gray-200 bg-gray-50"
+      }`}
+    >
+      <div className="flex min-h-8 items-start justify-between gap-2">
+        <div>
+          <p className="text-xs font-semibold text-gray-800">{plan.name}</p>
+          <p className="mt-0.5 text-[11px] text-gray-500">{plan.audience}</p>
+        </div>
+        {plan.recommended && (
+          <span className="rounded-full bg-blue-600 px-1.5 py-0.5 text-[10px] font-medium text-white">
+            推荐
+          </span>
+        )}
+      </div>
+      <p className="mt-3 text-sm font-semibold text-gray-900">{getPlanPrice(plan, interval)}</p>
+      <p className="mt-1 text-[11px] text-gray-500">
+        {formatCredits(plan.includedCredits)} 张托管 AI 额度
+      </p>
+      <ul className="mt-3 space-y-1.5">
+        {plan.features.slice(0, 2).map((feature) => (
+          <li key={feature} className="flex gap-1.5 text-[11px] leading-4 text-gray-600">
+            <Check size={12} className="mt-0.5 shrink-0 text-green-600" />
+            <span>{feature}</span>
+          </li>
+        ))}
+      </ul>
+      <button
+        type="button"
+        onClick={onStartCheckout}
+        disabled={disabled}
+        className={`mt-3 w-full rounded-md px-3 py-2 text-xs font-medium ${
+          plan.recommended
+            ? "bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-200"
+            : "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400"
+        } disabled:cursor-not-allowed`}
+      >
+        {busy ? "处理中..." : isCurrent ? "当前方案" : plan.cta}
+      </button>
     </div>
   );
+}
+
+function formatBillingDate(value?: string | null) {
+  if (!value) return "未设置";
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(value));
 }

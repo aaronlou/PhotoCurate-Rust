@@ -3,6 +3,7 @@ import { useAppStore } from "@/stores/useAppStore";
 import {
   checkLocalModel,
   getAiSettings,
+  getBillingStatus,
   scorePhotos,
 } from "@/hooks/useInvoke";
 import {
@@ -22,6 +23,8 @@ import {
   readStoredAiServiceMode,
   resolveInitialAiServiceMode,
 } from "@/lib/aiService";
+import { billingStatusLabel, formatCredits } from "@/lib/billing";
+import type { BillingStatus } from "@/types";
 
 export default function ScoringView() {
   const photos = useAppStore((s) => s.photos);
@@ -46,6 +49,7 @@ export default function ScoringView() {
   const [allowSavedKeyRead, setAllowSavedKeyRead] = useState(false);
   const [scoringScope, setScoringScope] = useState<"missing_evaluation" | "all">("missing_evaluation");
   const [serviceMode, setServiceMode] = useState<AiServiceMode>(() => readStoredAiServiceMode() ?? "photocurate_ai");
+  const [billingStatus, setBillingStatus] = useState<BillingStatus | null>(null);
 
   const photosMissingEvaluation = photos.filter((p) => !p.latest_evaluation);
   const pendingEvaluationCount = photosMissingEvaluation.length;
@@ -58,7 +62,8 @@ export default function ScoringView() {
   const activeProvider = providerConfig(scoringProvider);
   const configuredModel = aiSettings?.scoring_model || activeProvider.defaultModel;
   const hasScoringKey = Boolean(aiSettings?.has_scoring_api_key);
-  const canUseManagedAi = false;
+  const canUseManagedAi = Boolean(billingStatus?.canUseManagedAi);
+  const managedAiRuntimeAvailable = false;
 
   useEffect(() => {
     checkLocalModel().then(setLocalModelAvailable).catch(() => setLocalModelAvailable(false));
@@ -72,12 +77,18 @@ export default function ScoringView() {
         }
       })
       .catch(console.error);
+    getBillingStatus().then(setBillingStatus).catch(console.error);
   }, [setAiSettings]);
 
   const handleStartScoring = async () => {
     if (serviceMode === "photocurate_ai") {
       setScoreError(null);
-      setScoreNotice("PhotoCurate AI 托管服务还在准备中。当前版本请到 AI 服务页切换为“自带 API Key”。");
+      setScoreNotice(
+        canUseManagedAi
+          ? "订阅权益已识别，但 PhotoCurate AI 托管评分执行服务尚未接入。当前版本请先切换到“自带 API Key”生成评价。"
+          : billingStatus?.message ??
+              "PhotoCurate AI 托管订阅还未配置。当前版本请到 AI 服务页切换为“自带 API Key”。"
+      );
       return;
     }
 
@@ -160,6 +171,8 @@ export default function ScoringView() {
             configuredModel={configuredModel}
             hasScoringKey={hasScoringKey}
             canUseManagedAi={canUseManagedAi}
+            managedAiRuntimeAvailable={managedAiRuntimeAvailable}
+            billingStatus={billingStatus}
             onManage={() => setCurrentView("ai_service")}
           />
           <div className="rounded-lg border border-gray-200 bg-white p-4">
@@ -229,14 +242,22 @@ export default function ScoringView() {
               </div>
               <button
                 onClick={handleStartScoring}
-                disabled={isScoring || scoringTargetCount === 0 || (serviceMode === "photocurate_ai" && !canUseManagedAi)}
+                disabled={
+                  isScoring ||
+                  scoringTargetCount === 0 ||
+                  (serviceMode === "photocurate_ai" && (!canUseManagedAi || !managedAiRuntimeAvailable))
+                }
                 className="flex items-center gap-2 rounded-md bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Play size={16} />
                 {isScoring
                   ? "评价中..."
                   : serviceMode === "photocurate_ai"
-                  ? "即将开放"
+                  ? canUseManagedAi && managedAiRuntimeAvailable
+                    ? "生成评价"
+                    : canUseManagedAi
+                    ? "服务待接入"
+                    : "需要订阅"
                   : scoringScope === "all"
                   ? "重新评价"
                   : "生成评价"}
@@ -318,6 +339,8 @@ function ServiceSummaryCard({
   configuredModel,
   hasScoringKey,
   canUseManagedAi,
+  managedAiRuntimeAvailable,
+  billingStatus,
   onManage,
 }: {
   serviceMode: AiServiceMode;
@@ -325,11 +348,19 @@ function ServiceSummaryCard({
   configuredModel: string;
   hasScoringKey: boolean;
   canUseManagedAi: boolean;
+  managedAiRuntimeAvailable: boolean;
+  billingStatus: BillingStatus | null;
   onManage: () => void;
 }) {
   const isManaged = serviceMode === "photocurate_ai";
   const statusText = isManaged
-    ? canUseManagedAi ? "可用" : "即将开放"
+    ? canUseManagedAi
+      ? managedAiRuntimeAvailable
+        ? "可用"
+        : "权益有效"
+      : billingStatus
+      ? billingStatusLabel(billingStatus.status)
+      : "检测中"
     : hasScoringKey ? "已配置" : "未配置";
 
   return (
@@ -353,7 +384,11 @@ function ServiceSummaryCard({
           </div>
           <p className="mt-2 text-xs leading-5 text-gray-500">
             {isManaged
-              ? "托管 AI 未来会提供一站式评分、点评和分析额度。当前版本请切换到自带 API Key 继续生成评价。"
+              ? billingStatus?.canUseManagedAi
+                ? managedAiRuntimeAvailable
+                  ? `托管 AI 当前可用，剩余额度 ${formatCredits(billingStatus.usage.remainingCredits)} 张。`
+                  : `订阅权益有效，剩余额度 ${formatCredits(billingStatus.usage.remainingCredits)} 张；托管评分执行服务仍需接入。`
+                : billingStatus?.message ?? "托管 AI 需要有效订阅。当前可切换到自带 API Key 继续生成评价。"
               : `当前使用 ${providerLabel} / ${configuredModel} 生成评分和结构化点评。`}
           </p>
         </div>

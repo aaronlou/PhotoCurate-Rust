@@ -1,3 +1,4 @@
+pub mod billing;
 pub mod bootstrap;
 pub mod directory;
 pub mod export;

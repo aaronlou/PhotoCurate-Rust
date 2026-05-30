@@ -131,6 +131,21 @@ npm run release:macos
 
 `updater.key` 是更新包签名私钥，已被 `.gitignore` 忽略，不要提交到仓库；Tauri 配置里只保存对应公钥。GitHub Release 需要包含 `latest.json`，应用内「检查更新」会下载 manifest、验证更新包签名，然后安装并重启。CI 中可把私钥放入 `TAURI_SIGNING_PRIVATE_KEY`，本地脚本默认从 `updater.key` 读取。
 
+## 托管 AI 订阅
+
+PhotoCurate AI 托管评分需要订阅权益。官网版通过 `services/billing_service` 创建 Stripe Checkout Session，并由 Stripe webhook 写入权益；Mac App Store 版本通过 StoreKit 2 / Tauri IAP 插件购买和恢复订阅。BYOK 模式不需要 PhotoCurate 订阅。
+
+本地调试 Stripe：
+
+```bash
+cd services/billing_service
+cp .env.example .env
+npm install
+npm run dev
+```
+
+然后用 `PHOTOCURATE_BILLING_PROVIDER=stripe` 和 `PHOTOCURATE_BILLING_API_URL=http://127.0.0.1:8787` 启动桌面端。完整配置见 [docs/billing.md](docs/billing.md)。
+
 ## 本地模型安装（可选）
 
 如果你希望搜索功能完全离线运行，可以安装本地 Chinese-CLIP 模型。**如果不安装，搜索会自动使用 Gemini API。**

@@ -1,7 +1,8 @@
 use crate::application;
 use crate::application::ports::VectorIndexStore;
 use crate::domain::models::{
-    AiSettings, Directory, ExportResult, LibraryInsights, Photo, ScoringRunResult, SearchResult,
+    AiSettings, BillingActionResult, BillingStatus, Directory, ExportResult, LibraryInsights,
+    Photo, ScoringRunResult, SearchResult,
 };
 use crate::error::PhotoCurateError;
 use crate::AppState;
@@ -242,4 +243,34 @@ pub async fn validate_api_key(
     settings: serde_json::Value,
 ) -> Result<application::scoring::ValidateKeyResult, String> {
     map_err(application::scoring::validate_api_key(settings).await)
+}
+
+// ==================== Billing ====================
+
+#[tauri::command]
+pub async fn get_billing_status(state: State<'_, AppState>) -> Result<BillingStatus, String> {
+    map_err(application::billing::get_billing_status(&state.db).await)
+}
+
+#[tauri::command]
+pub async fn start_managed_ai_checkout(
+    state: State<'_, AppState>,
+    plan_id: String,
+    interval: String,
+) -> Result<BillingActionResult, String> {
+    map_err(application::billing::start_managed_ai_checkout(&state.db, plan_id, interval).await)
+}
+
+#[tauri::command]
+pub async fn restore_managed_ai_purchases(
+    state: State<'_, AppState>,
+) -> Result<BillingActionResult, String> {
+    map_err(application::billing::restore_managed_ai_purchases(&state.db).await)
+}
+
+#[tauri::command]
+pub async fn open_billing_portal(
+    state: State<'_, AppState>,
+) -> Result<BillingActionResult, String> {
+    map_err(application::billing::open_billing_portal(&state.db).await)
 }

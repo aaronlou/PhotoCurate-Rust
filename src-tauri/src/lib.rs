@@ -9,7 +9,10 @@ pub use application::bootstrap::{AppState, Monitors};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
+    let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_iap::init());
 
     #[cfg(not(feature = "app-store"))]
     let builder = builder
@@ -45,6 +48,10 @@ pub fn run() {
             interface::commands::update_ai_settings,
             interface::commands::check_local_model,
             interface::commands::validate_api_key,
+            interface::commands::get_billing_status,
+            interface::commands::start_managed_ai_checkout,
+            interface::commands::restore_managed_ai_purchases,
+            interface::commands::open_billing_portal,
             interface::commands::get_index_stats,
             interface::commands::rebuild_all_index,
         ])

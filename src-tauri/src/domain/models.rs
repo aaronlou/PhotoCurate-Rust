@@ -83,6 +83,41 @@ pub struct AiSettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BillingUsage {
+    pub period_start: Option<DateTime<Utc>>,
+    pub period_end: Option<DateTime<Utc>>,
+    pub included_credits: i64,
+    pub used_credits: i64,
+    pub remaining_credits: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BillingStatus {
+    pub provider: String,
+    pub plan_id: String,
+    pub status: String,
+    pub account_id: String,
+    pub renews_at: Option<DateTime<Utc>>,
+    pub trial_ends_at: Option<DateTime<Utc>>,
+    pub usage: BillingUsage,
+    pub can_use_managed_ai: bool,
+    pub checkout_available: bool,
+    pub restore_available: bool,
+    pub billing_portal_available: bool,
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BillingActionResult {
+    pub status: BillingStatus,
+    pub message: String,
+    pub checkout_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScoreResult {
     pub score: f64,
     pub review: String,

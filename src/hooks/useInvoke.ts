@@ -1,8 +1,31 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { open } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Update } from "@tauri-apps/plugin-updater";
-import { Photo, Directory, AISettings, SearchResult, ExportResult, PhotoSortOrder, ScoringProvider, LibraryInsights, AppUpdateDownloadEvent, AppUpdateInfo, ScoringRunResult } from "@/types";
+import {
+  getAppStoreBillingStatus,
+  isAppStoreBillingBuild,
+  restoreAppStorePurchases,
+  startAppStorePurchase,
+} from "@/lib/appStoreBilling";
+import {
+  Photo,
+  Directory,
+  AISettings,
+  SearchResult,
+  ExportResult,
+  PhotoSortOrder,
+  ScoringProvider,
+  LibraryInsights,
+  AppUpdateDownloadEvent,
+  AppUpdateInfo,
+  ScoringRunResult,
+  BillingActionResult,
+  BillingInterval,
+  BillingPlanId,
+  BillingStatus,
+} from "@/types";
 
 const STATE_RETRY_ATTEMPTS = 20;
 const STATE_RETRY_DELAY_MS = 250;
@@ -149,6 +172,50 @@ export async function rebuildAllIndex(allowKeychainRead = false): Promise<number
 
 export async function getAppVersion(): Promise<string> {
   return getVersion();
+}
+
+export async function getBillingStatus(): Promise<BillingStatus> {
+  const status = await invokeCommand<BillingStatus>("get_billing_status");
+  if (isAppStoreBillingBuild()) {
+    try {
+      return await getAppStoreBillingStatus(status.accountId);
+    } catch {
+      return status;
+    }
+  }
+  return status;
+}
+
+export async function startManagedAiCheckout(
+  planId: BillingPlanId,
+  interval: BillingInterval
+): Promise<BillingActionResult> {
+  const currentStatus = await invokeCommand<BillingStatus>("get_billing_status");
+  if (isAppStoreBillingBuild()) {
+    return startAppStorePurchase(currentStatus, planId, interval);
+  }
+
+  const result = await invokeCommand<BillingActionResult>("start_managed_ai_checkout", { planId, interval });
+  if (result.checkoutUrl) {
+    await openUrl(result.checkoutUrl);
+  }
+  return result;
+}
+
+export async function restoreManagedAiPurchases(): Promise<BillingActionResult> {
+  const currentStatus = await invokeCommand<BillingStatus>("get_billing_status");
+  if (isAppStoreBillingBuild()) {
+    return restoreAppStorePurchases(currentStatus);
+  }
+  return invokeCommand("restore_managed_ai_purchases");
+}
+
+export async function openBillingPortal(): Promise<BillingActionResult> {
+  const result = await invokeCommand<BillingActionResult>("open_billing_portal");
+  if (result.checkoutUrl) {
+    await openUrl(result.checkoutUrl);
+  }
+  return result;
 }
 
 export async function checkForAppUpdate(): Promise<AppUpdateInfo | null> {

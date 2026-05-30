@@ -1,11 +1,13 @@
 # Dependencies
 node_modules/
+services/**/node_modules/
 .pnp
 .pnp.js
 
 # Build outputs
 dist/
 build/
+services/**/dist/
 
 # Tauri
 src-tauri/target/
@@ -46,6 +48,9 @@ lerna-debug.log*
 .env
 .env.local
 .env.*.local
+services/**/.env
+services/**/.env.local
+services/**/.env.*.local
 
 # Signing (private keys — DO NOT COMMIT)
 *.key
