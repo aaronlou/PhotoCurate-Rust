@@ -1,13 +1,19 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { open } from "@tauri-apps/plugin-dialog";
-import { relaunch } from "@tauri-apps/plugin-process";
-import { check, type Update } from "@tauri-apps/plugin-updater";
+import type { Update } from "@tauri-apps/plugin-updater";
 import { Photo, Directory, AISettings, SearchResult, ExportResult, PhotoSortOrder, ScoringProvider, LibraryInsights, AppUpdateDownloadEvent, AppUpdateInfo, ScoringRunResult } from "@/types";
 
 const STATE_RETRY_ATTEMPTS = 20;
 const STATE_RETRY_DELAY_MS = 250;
 let pendingUpdate: Update | null = null;
+
+async function loadUpdater() {
+  if (import.meta.env.VITE_APP_STORE === "true") {
+    throw new Error("Mac App Store 版本会通过 App Store 更新");
+  }
+  return import("@tauri-apps/plugin-updater");
+}
 
 function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -146,6 +152,7 @@ export async function getAppVersion(): Promise<string> {
 }
 
 export async function checkForAppUpdate(): Promise<AppUpdateInfo | null> {
+  const { check } = await loadUpdater();
   pendingUpdate = await check();
   if (!pendingUpdate) {
     return null;
@@ -162,6 +169,7 @@ export async function checkForAppUpdate(): Promise<AppUpdateInfo | null> {
 export async function installAppUpdate(
   onEvent: (event: AppUpdateDownloadEvent) => void
 ): Promise<void> {
+  const { check } = await loadUpdater();
   if (!pendingUpdate) {
     pendingUpdate = await check();
   }
@@ -175,5 +183,6 @@ export async function installAppUpdate(
   await update.downloadAndInstall((event) => channel.onmessage(event));
   await update.close();
   pendingUpdate = null;
+  const { relaunch } = await import("@tauri-apps/plugin-process");
   await relaunch();
 }

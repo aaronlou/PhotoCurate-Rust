@@ -9,10 +9,14 @@ pub use application::bootstrap::{AppState, Monitors};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
+    let builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
+
+    #[cfg(not(feature = "app-store"))]
+    let builder = builder
         .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_updater::Builder::new().build());
+
+    builder
         .setup(|app| {
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {

@@ -95,6 +95,56 @@ if grep -q 'fs:allow-home-read\|fs:scope-home' src-tauri/capabilities/default.js
 fi
 echo -e "  ${GREEN}Metadata OK${NC}"
 
+# App Store builds must use App Store delivery for updates. The regular GitHub
+# DMG build keeps Tauri updater enabled; this script temporarily strips updater
+# config and permissions while the App Store package is produced.
+TAURI_CONF_BACKUP="$(mktemp)"
+CAPABILITY_BACKUP="$(mktemp)"
+GENERATED_CAPABILITY_BACKUP="$(mktemp)"
+cp src-tauri/tauri.conf.json "$TAURI_CONF_BACKUP"
+cp src-tauri/capabilities/default.json "$CAPABILITY_BACKUP"
+cp src-tauri/gen/schemas/capabilities.json "$GENERATED_CAPABILITY_BACKUP"
+
+restore_distribution_files() {
+    cp "$TAURI_CONF_BACKUP" src-tauri/tauri.conf.json
+    cp "$CAPABILITY_BACKUP" src-tauri/capabilities/default.json
+    cp "$GENERATED_CAPABILITY_BACKUP" src-tauri/gen/schemas/capabilities.json
+}
+trap restore_distribution_files EXIT
+
+echo -e "${YELLOW}Preparing App Store distribution config...${NC}"
+node --input-type=commonjs <<'NODE'
+const fs = require("fs");
+
+const tauriConfigPath = "src-tauri/tauri.conf.json";
+const tauriConfig = JSON.parse(fs.readFileSync(tauriConfigPath, "utf8"));
+if (tauriConfig.bundle) {
+  tauriConfig.bundle.createUpdaterArtifacts = false;
+}
+if (tauriConfig.plugins) {
+  delete tauriConfig.plugins.updater;
+  if (Object.keys(tauriConfig.plugins).length === 0) {
+    delete tauriConfig.plugins;
+  }
+}
+fs.writeFileSync(tauriConfigPath, `${JSON.stringify(tauriConfig, null, 2)}\n`);
+
+const capabilityPath = "src-tauri/capabilities/default.json";
+const capability = JSON.parse(fs.readFileSync(capabilityPath, "utf8"));
+capability.permissions = capability.permissions.filter(
+  (permission) => typeof permission !== "string" || (
+    !permission.startsWith("updater:") &&
+    !permission.startsWith("process:")
+  )
+);
+fs.writeFileSync(capabilityPath, `${JSON.stringify(capability, null, 2)}\n`);
+NODE
+if grep -q 'updater:' src-tauri/capabilities/default.json src-tauri/tauri.conf.json; then
+    echo -e "${RED}Refusing App Store build: updater is still enabled.${NC}"
+    exit 1
+fi
+echo -e "  ${GREEN}Updater disabled for App Store build${NC}"
+
 # --- Verify provisioning profile exists ---
 echo -e "${YELLOW}Checking provisioning profiles...${NC}"
 PROFILE_COUNT=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.provisionprofile 2>/dev/null | wc -l | tr -d ' ')
@@ -109,6 +159,7 @@ fi
 # --- Verify frontend is built ---
 echo -e "${YELLOW}Building frontend...${NC}"
 cd "$(dirname "$0")/.."
+export VITE_APP_STORE=true
 npm run build
 
 # --- Build the Tauri app with App Store signing ---
@@ -117,7 +168,7 @@ echo -e "\n${YELLOW}Building .app bundle (Mac App Store signed)...${NC}"
 export APPLE_SIGNING_IDENTITY
 export APPLE_PROVIDER_SHORT_NAME
 
-npm run tauri-build -- --bundles app
+npm run tauri-build -- --bundles app --features app-store
 
 APP_PATH="src-tauri/target/release/bundle/macos/PhotoCurate.app"
 PROFILE_PATH="$HOME/Library/MobileDevice/Provisioning Profiles/com.photocurate.provisionprofile"

@@ -28,6 +28,8 @@ const automationItems: { key: NavItem; label: string; icon: React.ReactNode }[] 
   { key: "ai_service", label: "AI 服务", icon: <Sparkles size={18} /> },
 ];
 
+const isAppStoreBuild = import.meta.env.VITE_APP_STORE === "true";
+
 export default function Sidebar() {
   const currentView = useAppStore((s) => s.currentView);
   const setCurrentView = useAppStore((s) => s.setCurrentView);
@@ -69,7 +71,7 @@ export default function Sidebar() {
           {automationItems.map(renderItem)}
         </div>
       </nav>
-      <UpdateStatus />
+      {!isAppStoreBuild && <UpdateStatus />}
     </aside>
   );
 }
