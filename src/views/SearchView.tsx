@@ -73,11 +73,13 @@ export default function SearchView() {
   const [isRebuilding, setIsRebuilding] = useState(false);
   const [localModelAvailable, setLocalModelAvailable] = useState<boolean | null>(null);
   const [hasGeminiKey, setHasGeminiKey] = useState(false);
+  const [aiSettingsLoaded, setAiSettingsLoaded] = useState(false);
   const [allowSavedKeyRead, setAllowSavedKeyRead] = useState(false);
   const cancelRequestedRef = useRef(false);
 
   const selectedPhoto = useAppStore((s) => s.selectedPhoto);
   const setSelectedPhoto = useAppStore((s) => s.setSelectedPhoto);
+  const setCurrentView = useAppStore((s) => s.setCurrentView);
   const photos = useAppStore((s) => s.photos);
   const directories = useAppStore((s) => s.directories);
   const loadLibrary = useAppStore((s) => s.loadLibrary);
@@ -110,6 +112,9 @@ export default function SearchView() {
   const indexPanelOpen = showIndexPanel || forceIndexPanelOpen;
   const indexPercent = totalPhotos > 0 ? Math.round((indexedCount / totalPhotos) * 100) : 0;
   const pendingFolderCount = folderSummaries.filter((summary) => summary.pending > 0).length;
+  const searchServiceReady = localModelAvailable !== null && aiSettingsLoaded;
+  const canUseSearchEmbeddings = localModelAvailable === true || hasGeminiKey;
+  const searchServiceUnavailable = searchServiceReady && !canUseSearchEmbeddings;
 
   useEffect(() => {
     getIndexStats()
@@ -122,7 +127,8 @@ export default function SearchView() {
     checkLocalModel().then(setLocalModelAvailable).catch(() => setLocalModelAvailable(false));
     getAiSettings()
       .then((settings) => setHasGeminiKey(Boolean(settings?.has_api_key)))
-      .catch(() => setHasGeminiKey(false));
+      .catch(() => setHasGeminiKey(false))
+      .finally(() => setAiSettingsLoaded(true));
   }, [loadLibrary]);
 
   useEffect(() => {
@@ -140,6 +146,38 @@ export default function SearchView() {
     return false;
   };
 
+  const requireSearchEmbeddingService = () => {
+    setSearchError(null);
+    if (!searchServiceReady) {
+      setSearchNotice(t("search.serviceChecking"));
+      return false;
+    }
+    if (!canUseSearchEmbeddings) {
+      setSearchNotice(t("search.missingIndexService"));
+      return false;
+    }
+    return true;
+  };
+
+  const formatSearchError = (error: unknown, fallback: string) => {
+    const message =
+      typeof error === "string"
+        ? error
+        : error instanceof Error
+          ? error.message
+          : String(error || "");
+
+    if (
+      message.includes("embedding service not configured") ||
+      message.includes("Search indexing is not configured") ||
+      message.includes("Smart Search needs either the local Chinese-CLIP model or a Gemini API Key")
+    ) {
+      return t("search.missingIndexService");
+    }
+
+    return message || fallback;
+  };
+
   const refreshIndexState = async () => {
     await loadLibrary();
     const stats = await getIndexStats();
@@ -153,6 +191,7 @@ export default function SearchView() {
       setSearchNotice(t("search.buildIndexFirst"));
       return;
     }
+    if (!requireSearchEmbeddingService()) return;
     if (!requireSavedKeyConsent()) return;
 
     setIsSearching(true);
@@ -164,7 +203,7 @@ export default function SearchView() {
       await refreshIndexState();
     } catch (e: any) {
       console.error(e);
-      setSearchError(typeof e === "string" ? e : e?.message || t("search.failed"));
+      setSearchError(formatSearchError(e, t("search.failed")));
     } finally {
       setIsSearching(false);
     }
@@ -172,6 +211,7 @@ export default function SearchView() {
 
   const handleBuildFolderIndex = async (summary: FolderIndexSummary) => {
     if (summary.pendingPhotoIds.length === 0) return;
+    if (!requireSearchEmbeddingService()) return;
     if (!requireSavedKeyConsent()) return;
 
     setActiveIndexDirectoryId(summary.directory.id);
@@ -192,7 +232,7 @@ export default function SearchView() {
       }
     } catch (e: any) {
       console.error(e);
-      setSearchError(typeof e === "string" ? e : e?.message || t("search.indexFailed"));
+      setSearchError(formatSearchError(e, t("search.indexFailed")));
     } finally {
       cancelRequestedRef.current = false;
       setActiveIndexDirectoryId(null);
@@ -206,6 +246,7 @@ export default function SearchView() {
   };
 
   const handleRebuildAll = async () => {
+    if (!requireSearchEmbeddingService()) return;
     if (!requireSavedKeyConsent()) return;
     if (!window.confirm(t("search.rebuildConfirm"))) {
       return;
@@ -226,7 +267,7 @@ export default function SearchView() {
       }
     } catch (e: any) {
       console.error(e);
-      setSearchError(typeof e === "string" ? e : e?.message || t("search.rebuildFailed"));
+      setSearchError(formatSearchError(e, t("search.rebuildFailed")));
     } finally {
       cancelRequestedRef.current = false;
       setIsRebuilding(false);
@@ -416,6 +457,20 @@ export default function SearchView() {
               </label>
             )}
 
+            {searchServiceUnavailable && (
+              <div className="mb-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-800">
+                <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                <p className="leading-5">{t("search.missingIndexService")}</p>
+                <button
+                  type="button"
+                  onClick={() => setCurrentView("ai_service")}
+                  className="ml-auto shrink-0 rounded-md border border-amber-200 bg-white px-2 py-1 text-[11px] font-medium text-amber-800 hover:bg-amber-50"
+                >
+                  {t("common.manage")}
+                </button>
+              </div>
+            )}
+
             <div className="space-y-1.5">
               {folderSummaries.length === 0 ? (
                 <div className="rounded-md bg-gray-50 px-2.5 py-2 text-xs text-gray-400">{t("search.addFoldersFirst")}</div>
@@ -443,7 +498,7 @@ export default function SearchView() {
                       <button
                         type="button"
                         onClick={() => handleBuildFolderIndex(summary)}
-                        disabled={isIndexing || summary.pending === 0}
+                        disabled={isIndexing || summary.pending === 0 || !searchServiceReady || !canUseSearchEmbeddings}
                         className={cn(
                           "flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium",
                           summary.pending === 0
@@ -457,6 +512,8 @@ export default function SearchView() {
                             <span className="h-3 w-3 rounded-full border-2 border-white/40 border-t-white animate-spin" />
                             {t("search.generating")}
                           </>
+                        ) : !canUseSearchEmbeddings ? (
+                          t("search.configure")
                         ) : summary.pending === 0 ? (
                           t("search.completed")
                         ) : (

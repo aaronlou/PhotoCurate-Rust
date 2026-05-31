@@ -822,4 +822,42 @@ mod tests {
         assert!(embeddings.max_in_flight() > 1);
         assert!(embeddings.max_in_flight() <= REMOTE_INDEX_CONCURRENCY);
     }
+
+    #[tokio::test]
+    async fn build_index_reports_clear_message_when_embedding_service_is_unavailable() {
+        let selected_photo = photo("photo-without-service");
+        let settings_repo = InMemorySettingsRepository {
+            settings: AiSettings {
+                api_key: String::new(),
+                has_api_key: false,
+                ..settings()
+            },
+        };
+        let photo_repo = InMemoryPhotoRepository::new(vec![selected_photo.clone()]);
+        let vector_repo = NoopVectorRepository;
+        let embedding_repo = InMemoryEmbeddingRepository::new();
+        let vector_index = InMemoryVectorIndex::new();
+        let embeddings = ConcurrentEmbeddingService::new();
+
+        let error = build_index_with(
+            &settings_repo,
+            &photo_repo,
+            &vector_repo,
+            &embedding_repo,
+            &vector_index,
+            &embeddings,
+            &NoopProgressReporter,
+            None,
+            vec![selected_photo.id],
+            false,
+        )
+        .await
+        .expect_err("indexing should explain missing service");
+
+        let message = error.to_string();
+        assert!(message.contains(
+            "Smart Search needs either the local Chinese-CLIP model or a Gemini API Key"
+        ));
+        assert_eq!(embedding_repo.saved_count(), 0);
+    }
 }

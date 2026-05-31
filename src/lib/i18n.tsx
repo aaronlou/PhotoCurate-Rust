@@ -77,6 +77,8 @@ const zh = {
   "common.manage": "管理",
 
   "search.savedKeyConsentRequired": "需要读取已保存的 Gemini API Key。请先勾选页面上的说明，确认后再继续。",
+  "search.serviceChecking": "正在检查本地检索服务，请稍后再试。",
+  "search.missingIndexService": "智能检索需要本地 Chinese-CLIP 模型或 Gemini API Key。请到 AI 服务页配置 Gemini API Key 后再开始生成索引。",
   "search.buildIndexFirst": "请先为需要检索的文件夹生成本地索引，再开始自然语言检索。",
   "search.failed": "搜索失败，请检查 API Key 或网络连接",
   "search.indexFailed": "生成索引失败",
@@ -108,6 +110,7 @@ const zh = {
   "search.generating": "生成中",
   "search.completed": "已完成",
   "search.start": "开始",
+  "search.configure": "先配置",
   "search.diagnostics": "诊断信息",
   "search.rebuilding": "重建中...",
   "search.rebuildAll": "重建全部",
@@ -400,6 +403,8 @@ const en: Record<TranslationKey, string> = {
   "common.manage": "Manage",
 
   "search.savedKeyConsentRequired": "PhotoCurate needs to read the saved Gemini API Key. Please check the explanation on this page before continuing.",
+  "search.serviceChecking": "PhotoCurate is checking the search service. Please try again in a moment.",
+  "search.missingIndexService": "Smart Search needs either the local Chinese-CLIP model or a Gemini API Key. Configure a Gemini API Key in AI Service before building an index.",
   "search.buildIndexFirst": "Build a local index for the folders you want to search before using natural language search.",
   "search.failed": "Search failed. Check your API Key or network connection.",
   "search.indexFailed": "Failed to build index",
@@ -431,6 +436,7 @@ const en: Record<TranslationKey, string> = {
   "search.generating": "Generating",
   "search.completed": "Completed",
   "search.start": "Start",
+  "search.configure": "Configure",
   "search.diagnostics": "Diagnostics",
   "search.rebuilding": "Rebuilding...",
   "search.rebuildAll": "Rebuild All",

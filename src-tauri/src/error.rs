@@ -20,13 +20,15 @@ pub enum PhotoCurateError {
     #[error("settings not found")]
     SettingsNotFound,
 
-    #[error("API key not configured")]
+    #[error(
+        "API Key is not configured. Open AI Service and configure an API Key before starting."
+    )]
     ApiKeyMissing,
 
     #[error("all scoring attempts failed: {0}")]
     ScoringRunFailed(String),
 
-    #[error("embedding service not configured")]
+    #[error("Smart Search needs either the local Chinese-CLIP model or a Gemini API Key. Open AI Service and configure a Gemini API Key before building an index.")]
     EmbeddingServiceMissing,
 
     #[error("file not found: {0}")]
